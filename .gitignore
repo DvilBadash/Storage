@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# SQLite databases (contain live data)
+*.db
+*.db-wal
+*.db-shm
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Archive output folders
+archive/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
