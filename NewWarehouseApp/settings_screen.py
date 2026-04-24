@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     QTabWidget, QGroupBox, QFileDialog, QMessageBox,
     QHeaderView, QAbstractItemView, QFrame,
-    QScrollArea, QGridLayout,
+    QScrollArea, QGridLayout, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
@@ -77,7 +77,7 @@ class SettingsScreen(QWidget):
 
         grp_loc = QGroupBox("טעינת איתורים (LocationNew)")
         g_loc = QVBoxLayout(grp_loc); g_loc.setSpacing(12)
-        info = QLabel("צפוי קובץ Excel עם עמודות: DestArea, Dest_BIN")
+        info = QLabel("צפוי קובץ newBIns.xlsx עם עמודות: סביבתי / ממוזג, אזור WM, איתור")
         info.setStyleSheet("color: #616161; font-size: 12px;")
         g_loc.addWidget(info)
         btn_loc = QPushButton("📂 טעינת קובץ איתורים (Excel)")
@@ -88,8 +88,8 @@ class SettingsScreen(QWidget):
         grp_pal = QGroupBox("ייבוא משטחים ממחסן ישן")
         g_pal = QVBoxLayout(grp_pal); g_pal.setSpacing(12)
         info2 = QLabel(
-            "יובא קובץ יצוא PalletExport מהמחסן הישן.\n"
-            "הקובץ מכיל: PalletID, CreateDate, CreateUser, Status, PN, Batch, ..."
+            "יובא קובץ FinalOutput.xlsx (גיליון Merge1) מכלי המיזוג.\n"
+            'הקובץ מכיל: מק"ט, חומר, יחידת מידה, סדרה, WBS, Pallet, Is_In_Stock, אזור WM, איתור...'
         )
         info2.setStyleSheet("color: #616161; font-size: 12px;")
         g_pal.addWidget(info2)
@@ -101,6 +101,19 @@ class SettingsScreen(QWidget):
         self.lbl_last_import.setStyleSheet("color: #616161; font-size: 12px;")
         g_pal.addWidget(self.lbl_last_import)
         lay.addWidget(grp_pal)
+
+        grp_codes = QGroupBox("טעינת רשימת קודי משטחים (Pallets.xlsx)")
+        g_codes = QVBoxLayout(grp_codes); g_codes.setSpacing(12)
+        info3 = QLabel("טען קובץ עם עמודה אחת 'Pallet' המכילה קודי משטח (לדוגמה: P-001...P-5000).\nהקודים יטענו לרשימת הבחירה של 'בחר משטח' במסך השיוך.")
+        info3.setStyleSheet("color: #616161; font-size: 12px;")
+        g_codes.addWidget(info3)
+        btn_codes = QPushButton("📂 טעינת קודי משטחים מ-Excel")
+        btn_codes.clicked.connect(self._load_pallet_codes)
+        g_codes.addWidget(btn_codes)
+        self.lbl_pallet_codes = QLabel(f"ייבוא אחרון: {db.get_setting('last_pallet_import') or 'לא בוצע'}")
+        self.lbl_pallet_codes.setStyleSheet("color: #616161; font-size: 12px;")
+        g_codes.addWidget(self.lbl_pallet_codes)
+        lay.addWidget(grp_codes)
 
         grp_exp = QGroupBox("יצוא נתוני שיוכים")
         g_exp = QVBoxLayout(grp_exp); g_exp.setSpacing(12)
@@ -130,7 +143,7 @@ class SettingsScreen(QWidget):
 
         row_pos = 0
         for section, keys in [
-            ("טבלת פריטי משטח:", [f"item_col_{i}" for i in range(7)]),
+            ("טבלת פריטי משטח:", [f"item_col_{i}" for i in range(11)]),
             ("טבלת ניהול משטחים:", [f"pal_col_{i}"  for i in range(6)]),
         ]:
             sec_lbl = QLabel(section)
@@ -296,6 +309,22 @@ class SettingsScreen(QWidget):
         db.import_pallets_from_rows(rows, self.username)
         self.lbl_last_import.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
         QMessageBox.information(self, "הצלחה", f"יובאו {len(rows)} שורות משטחים ✓")
+
+    def _load_pallet_codes(self):
+        path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ קודי משטחים Excel", "", "Excel Files (*.xlsx *.xls)")
+        if not path:
+            return
+        try:
+            codes = xh.load_pallet_codes_xlsx(path)
+        except Exception as e:
+            QMessageBox.critical(self, "שגיאה", str(e))
+            return
+        if not codes:
+            QMessageBox.warning(self, "אזהרה", "לא נמצאו קודי משטחים בקובץ")
+            return
+        db.bulk_insert_pallet_codes(codes, self.username)
+        self.lbl_pallet_codes.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
+        QMessageBox.information(self, "הצלחה", f"נטענו {len(codes)} קודי משטחים ✓")
 
     def _export_assignments(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))

@@ -18,7 +18,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.username = username
         self.setWindowTitle("WMS – מחסן חדש")
-        self.setMinimumSize(900, 680)
+        self.setMinimumSize(960, 700)
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
         self._apply_theme(db.get_setting("theme", "light"))
         self._build_ui()

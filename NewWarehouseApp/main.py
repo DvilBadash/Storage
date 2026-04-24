@@ -31,7 +31,15 @@ def main():
         sys.exit(0)
 
     window = MainWindow(login.selected_user)
-    window.showMaximized()
+    screen = QApplication.primaryScreen().availableGeometry()
+    w = min(1280, screen.width())
+    h = min(800, screen.height())
+    window.resize(w, h)
+    window.move(
+        screen.x() + (screen.width()  - w) // 2,
+        screen.y() + (screen.height() - h) // 2,
+    )
+    window.show()
     sys.exit(app.exec())
 
 

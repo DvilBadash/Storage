@@ -35,13 +35,14 @@ def init_db():
                 Details         TEXT
             );
             CREATE TABLE IF NOT EXISTS LocationNew (
-                LocationID INTEGER PRIMARY KEY AUTOINCREMENT,
-                DestArea   TEXT NOT NULL,
-                Dest_BIN   TEXT NOT NULL,
+                LocationID  INTEGER PRIMARY KEY AUTOINCREMENT,
+                Environment TEXT NOT NULL DEFAULT '',
+                DestArea    TEXT NOT NULL,
+                Dest_BIN    TEXT NOT NULL,
                 UNIQUE (DestArea, Dest_BIN)
             );
             CREATE TABLE IF NOT EXISTS Pallets (
-                PalletID   INTEGER PRIMARY KEY,
+                PalletID   TEXT PRIMARY KEY,
                 CreateDate TEXT,
                 CreateUser TEXT,
                 Status     TEXT DEFAULT 'הוקם',
@@ -49,31 +50,61 @@ def init_db():
                 AssignDate TEXT
             );
             CREATE TABLE IF NOT EXISTS PalletItems (
-                ItemID    INTEGER PRIMARY KEY AUTOINCREMENT,
-                PalletID  INTEGER NOT NULL,
-                Pn        TEXT,
-                Batch     TEXT,
-                WBS       TEXT,
-                Storage   TEXT,
-                Area      TEXT,
-                Bin       TEXT,
-                Qty       REAL,
-                IsInStock INTEGER DEFAULT 0,
+                ItemID            INTEGER PRIMARY KEY AUTOINCREMENT,
+                PalletID          TEXT NOT NULL,
+                Pn                TEXT,
+                Material          TEXT,
+                UnitOfMeasure     TEXT,
+                Batch             TEXT,
+                WBS               TEXT,
+                Storage           TEXT,
+                StorageType       TEXT,
+                Bin               TEXT,
+                Qty               REAL,
+                DedicatedStrategy TEXT,
+                MultiLocation     TEXT,
+                Environment       TEXT,
+                WMArea            TEXT,
+                IsInStock         INTEGER DEFAULT 0,
                 FOREIGN KEY (PalletID) REFERENCES Pallets(PalletID)
             );
         """)
         _seed_settings(c)
+        # Migrations for existing databases
+        for col, defn in [
+            ("Environment",      "TEXT NOT NULL DEFAULT ''"),
+            ("Material",         "TEXT DEFAULT ''"),
+            ("UnitOfMeasure",    "TEXT DEFAULT ''"),
+            ("StorageType",      "TEXT DEFAULT ''"),
+            ("DedicatedStrategy","TEXT DEFAULT ''"),
+            ("MultiLocation",    "TEXT DEFAULT ''"),
+            ("WMArea",           "TEXT DEFAULT ''"),
+        ]:
+            try:
+                c.execute(f"ALTER TABLE PalletItems ADD COLUMN {col} {defn}")
+            except Exception:
+                pass
+        try:
+            c.execute("ALTER TABLE LocationNew ADD COLUMN Environment TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        _migrate_pallet_id_to_text(c)
         c.commit()
 
 
+# 11 item columns matching STOCK.xlsx field names
 DEFAULT_ITEM_HEADERS = {
-    "item_col_0": "PN",
-    "item_col_1": "אצווה",
-    "item_col_2": "WBS",
-    "item_col_3": "אחסון",
-    "item_col_4": "אזור",
-    "item_col_5": "Bin",
-    "item_col_6": "כמות",
+    "item_col_0":  'מק"ט',
+    "item_col_1":  "חומר",
+    "item_col_2":  "יחידת מידה",
+    "item_col_3":  "סדרה",
+    "item_col_4":  "WBS",
+    "item_col_5":  "אתר אחסון",
+    "item_col_6":  "סוג איחסון",
+    "item_col_7":  "איתור איחסון",
+    "item_col_8":  "מלאי זמין",
+    "item_col_9":  "אסטרטגיה ייעודית",
+    "item_col_10": "האם > איתור אחד",
 }
 
 DEFAULT_PAL_HEADERS = {
@@ -84,6 +115,74 @@ DEFAULT_PAL_HEADERS = {
     "pal_col_4": "פריטים",
     "pal_col_5": "עדכן סטטוס",
 }
+
+
+def _migrate_pallet_id_to_text(c):
+    """Migrate PalletID from INTEGER to TEXT in Pallets and PalletItems."""
+    cols = c.execute("PRAGMA table_info(Pallets)").fetchall()
+    needs_migration = any(
+        col[1] == "PalletID" and col[2].upper() == "INTEGER" for col in cols
+    )
+    if not needs_migration:
+        return
+    c.executescript("""
+        ALTER TABLE PalletItems RENAME TO PalletItems_old;
+        ALTER TABLE Pallets RENAME TO Pallets_old;
+        CREATE TABLE Pallets (
+            PalletID   TEXT PRIMARY KEY,
+            CreateDate TEXT,
+            CreateUser TEXT,
+            Status     TEXT DEFAULT 'הוקם',
+            TargetBin  TEXT,
+            AssignDate TEXT
+        );
+        CREATE TABLE PalletItems (
+            ItemID            INTEGER PRIMARY KEY AUTOINCREMENT,
+            PalletID          TEXT NOT NULL,
+            Pn                TEXT,
+            Material          TEXT DEFAULT '',
+            UnitOfMeasure     TEXT DEFAULT '',
+            Batch             TEXT,
+            WBS               TEXT,
+            Storage           TEXT,
+            StorageType       TEXT DEFAULT '',
+            Bin               TEXT,
+            Qty               REAL,
+            DedicatedStrategy TEXT DEFAULT '',
+            MultiLocation     TEXT DEFAULT '',
+            Environment       TEXT DEFAULT '',
+            WMArea            TEXT DEFAULT '',
+            IsInStock         INTEGER DEFAULT 0,
+            FOREIGN KEY (PalletID) REFERENCES Pallets(PalletID)
+        );
+        INSERT INTO Pallets
+            SELECT CAST(PalletID AS TEXT), CreateDate, CreateUser, Status, TargetBin, AssignDate
+            FROM Pallets_old;
+        INSERT INTO PalletItems
+            SELECT ItemID, CAST(PalletID AS TEXT), Pn,
+                   COALESCE(Material,''), COALESCE(UnitOfMeasure,''),
+                   Batch, WBS, Storage, COALESCE(StorageType,''), Bin, Qty,
+                   COALESCE(DedicatedStrategy,''), COALESCE(MultiLocation,''),
+                   COALESCE(Environment,''), COALESCE(WMArea,''), IsInStock
+            FROM PalletItems_old;
+        DROP TABLE PalletItems_old;
+        DROP TABLE Pallets_old;
+    """)
+
+
+def _normalize_pid(pid) -> str | None:
+    """Normalize a pallet ID to text form. Numeric 1 → 'P-001'; 'P-001' kept as-is."""
+    if pid is None:
+        return None
+    s = str(pid).strip()
+    if not s:
+        return None
+    if s.upper().startswith("P-"):
+        return s.upper()
+    try:
+        return f"P-{int(float(s)):03d}"
+    except (ValueError, TypeError):
+        return s
 
 
 def _seed_settings(c):
@@ -105,7 +204,7 @@ def _seed_settings(c):
 
 def get_item_headers() -> list[str]:
     return [get_setting(f"item_col_{i}", DEFAULT_ITEM_HEADERS.get(f"item_col_{i}", ""))
-            for i in range(7)]
+            for i in range(11)]
 
 
 def get_pal_headers() -> list[str]:
@@ -218,7 +317,8 @@ def bulk_insert_locations(rows: list[dict]):
     with get_conn() as c:
         for r in rows:
             c.execute(
-                "INSERT OR IGNORE INTO LocationNew (DestArea, Dest_BIN) VALUES (:DestArea, :Dest_BIN)",
+                """INSERT OR IGNORE INTO LocationNew (Environment, DestArea, Dest_BIN)
+                   VALUES (:Environment, :DestArea, :Dest_BIN)""",
                 r,
             )
         c.commit()
@@ -236,24 +336,24 @@ def get_pallets(status_filter="", unassigned_only=False):
     sql = "SELECT * FROM Pallets"
     if conditions:
         sql += " WHERE " + " AND ".join(conditions)
-    sql += " ORDER BY PalletID"
+    sql += " ORDER BY CAST(SUBSTR(PalletID, 3) AS INTEGER)"
     with get_conn() as c:
         return c.execute(sql, params).fetchall()
 
 
-def get_pallet(pallet_id: int):
+def get_pallet(pallet_id: str):
     with get_conn() as c:
         return c.execute("SELECT * FROM Pallets WHERE PalletID=?", (pallet_id,)).fetchone()
 
 
-def get_pallet_items(pallet_id: int):
+def get_pallet_items(pallet_id: str):
     with get_conn() as c:
         return c.execute(
             "SELECT * FROM PalletItems WHERE PalletID=? ORDER BY Pn", (pallet_id,)
         ).fetchall()
 
 
-def assign_pallet_to_bin(pallet_id: int, target_bin: str, user: str):
+def assign_pallet_to_bin(pallet_id: str, target_bin: str, user: str):
     pallet = get_pallet(pallet_id)
     if not pallet:
         raise ValueError(f"משטח {pallet_id} לא נמצא")
@@ -271,7 +371,7 @@ def assign_pallet_to_bin(pallet_id: int, target_bin: str, user: str):
     log(user, "ASSIGN_PALLET_BIN", f"PalletID={pallet_id} TargetBin={target_bin}")
 
 
-def update_pallet_status(pallet_id: int, status: str, user: str):
+def update_pallet_status(pallet_id: str, status: str, user: str):
     with get_conn() as c:
         c.execute("UPDATE Pallets SET Status=? WHERE PalletID=?", (status, pallet_id))
         c.commit()
@@ -279,44 +379,76 @@ def update_pallet_status(pallet_id: int, status: str, user: str):
 
 
 def import_pallets_from_rows(rows: list[dict], user: str):
+    """Import pallet rows from FinalOutput.xlsx or a pallet export file."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
         for r in rows:
-            pid = r.get("PalletID")
+            pid = _normalize_pid(r.get("PalletID") or r.get("Pallet"))
             if pid is None:
                 continue
-            try:
-                pid = int(float(str(pid)))
-            except (ValueError, TypeError):
-                continue
-            # Upsert pallet
             c.execute(
                 """INSERT OR IGNORE INTO Pallets (PalletID, CreateDate, CreateUser, Status)
                    VALUES (?, ?, ?, ?)""",
                 (pid, r.get("CreateDate", now), r.get("CreateUser", user),
                  r.get("Status", "הוקם")),
             )
-            # Insert item
             try:
                 qty = float(str(r.get("Qty", 0) or 0))
             except (ValueError, TypeError):
                 qty = 0.0
             c.execute(
-                """INSERT INTO PalletItems (PalletID,Pn,Batch,WBS,Storage,Area,Bin,Qty,IsInStock)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (pid, r.get("PN", r.get("Pn", "")), r.get("Batch", ""),
-                 r.get("WBS", ""), r.get("Storage", ""), r.get("Area", ""),
-                 r.get("Bin", ""), qty, 1 if r.get("IsInStock") else 0),
+                """INSERT INTO PalletItems
+                   (PalletID, Pn, Material, UnitOfMeasure, Batch, WBS, Storage,
+                    StorageType, Bin, Qty, DedicatedStrategy, MultiLocation,
+                    Environment, WMArea, IsInStock)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    pid,
+                    r.get("Pn",  r.get("PN",  r.get('מק"ט',  ""))),
+                    r.get("Material",          r.get("חומר",           "")),
+                    r.get("UnitOfMeasure",     r.get("יחידת מידה",     "")),
+                    r.get("Batch",             r.get("סדרה",           "")),
+                    r.get("WBS",               r.get("WBS",            "")),
+                    r.get("Storage",           r.get("אתר אחסון",      "")),
+                    r.get("StorageType",       r.get("סוג איחסון",     r.get("Area", ""))),
+                    r.get("Bin",               r.get("איתור איחסון",   "")),
+                    qty,
+                    r.get("DedicatedStrategy", r.get("אסטרטגיה ייעודית", "")),
+                    r.get("MultiLocation",     r.get("האם > איתור אחד",  "")),
+                    r.get("Environment",       r.get("סביבתי / ממוזג",   "")),
+                    r.get("WMArea",            r.get("אזור WM",           "")),
+                    1 if r.get("IsInStock") or r.get("Is_In_Stock") else 0,
+                ),
             )
         c.commit()
     set_setting("last_pallet_import", now)
     log(user, "IMPORT_PALLETS", f"יובאו {len(rows)} שורות")
 
 
+def bulk_insert_pallet_codes(codes: list[str], user: str = "מערכת"):
+    """Pre-populate the Pallets table with pallet IDs from Pallets.xlsx (no items)."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_conn() as c:
+        for code in codes:
+            pid = _normalize_pid(code)
+            if pid:
+                c.execute(
+                    "INSERT OR IGNORE INTO Pallets (PalletID, CreateDate, CreateUser, Status) VALUES (?,?,?,?)",
+                    (pid, now, user, "הוקם"),
+                )
+        c.commit()
+    set_setting("last_pallet_import", now)
+    log(user, "LOAD_PALLET_CODES", f"נטענו {len(codes)} קודי משטח")
+
+
 def get_all_pallets_export():
     with get_conn() as c:
         return c.execute(
-            """SELECT p.*, pi.Pn, pi.Batch, pi.WBS, pi.Storage, pi.Area, pi.Bin, pi.Qty, pi.IsInStock
+            """SELECT p.PalletID, p.Status, p.TargetBin, p.AssignDate,
+                      pi.Pn, pi.Material, pi.UnitOfMeasure, pi.Batch, pi.WBS,
+                      pi.Storage, pi.StorageType, pi.Bin, pi.Qty,
+                      pi.DedicatedStrategy, pi.MultiLocation,
+                      pi.Environment, pi.WMArea, pi.IsInStock
                FROM Pallets p
                LEFT JOIN PalletItems pi ON p.PalletID = pi.PalletID
                ORDER BY p.PalletID"""

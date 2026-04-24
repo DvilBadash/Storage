@@ -13,19 +13,21 @@ MAX_ROWS = 500
 
 # ── Column indices ────────────────────────────────────────────────────────────
 COL_CB    = 0   # בחירה
-COL_PN    = 1
-COL_CAT   = 2
-COL_BATCH = 3
-COL_WBS   = 4
-COL_STO   = 5
-COL_AREA  = 6
-COL_BIN   = 7
-COL_DEST  = 8
-COL_QTY   = 9
-COL_STOCK = 10  # קיים פיזית – native checkbox
-COL_DUP   = 11  # ⚠ duplicate PN+Storage
-COL_PAL   = 12  # ⚑ assigned pallet
-NUM_COLS  = 13
+COL_PN    = 1   # מק"ט
+COL_CAT   = 2   # חומר
+COL_UOM   = 3   # יחידת מידה
+COL_BATCH = 4   # סדרה
+COL_WBS   = 5   # WBS
+COL_STO   = 6   # אתר אחסון
+COL_AREA  = 7   # סוג איחסון
+COL_BIN   = 8   # איתור איחסון
+COL_DEST  = 9   # אסטרטגיה ייעודית
+COL_QTY   = 10  # מלאי זמין
+COL_MULTI = 11  # האם > איתור אחד
+COL_STOCK = 12  # קיים פיזית – native toggle
+COL_DUP   = 13  # ⚠ duplicate PN+Storage
+COL_PAL   = 14  # ⚑ assigned pallet
+NUM_COLS  = 15
 
 COLOR_DUP   = QColor("#E65100")
 COLOR_PAL   = QColor("#1565C0")
@@ -224,7 +226,8 @@ class InventoryScreen(QWidget):
         # Stretch PN; everything else ResizeToContents
         for i in range(1, NUM_COLS):
             hh.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_PN, QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(COL_PN,  QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(COL_CAT, QHeaderView.ResizeMode.Stretch)
         root.addWidget(self.table, 1)
 
         self.lbl_count = QLabel("")
@@ -264,6 +267,9 @@ class InventoryScreen(QWidget):
         self.table.setHorizontalHeaderLabels(db.get_column_headers())
         for i in range(1, NUM_COLS):
             self.table.setColumnHidden(i, db.get_col_hidden(i))
+        # COL_DUP and COL_PAL are always visible (functional indicators)
+        self.table.setColumnHidden(COL_DUP, False)
+        self.table.setColumnHidden(COL_PAL, False)
 
     # ── Data helpers ──────────────────────────────────────────────────────────
 
@@ -372,8 +378,9 @@ class InventoryScreen(QWidget):
             self._cb_list[r] = cb
 
             # ── Data cells ────────────────────────────────────────────────────
-            self.table.setItem(r, COL_PN,    mk(row["Pn"],      bold=True))
+            self.table.setItem(r, COL_PN,    mk(row["Pn"],           bold=True))
             self.table.setItem(r, COL_CAT,   mk(row["Cat"]))
+            self.table.setItem(r, COL_UOM,   mk(row["UnitOfMeasure"]))
             self.table.setItem(r, COL_BATCH, mk(row["Batch"]))
             self.table.setItem(r, COL_WBS,   mk(row["WBS"]))
             self.table.setItem(r, COL_STO,   mk(row["Storage"]))
@@ -381,6 +388,7 @@ class InventoryScreen(QWidget):
             self.table.setItem(r, COL_BIN,   mk(row["Bin"]))
             self.table.setItem(r, COL_DEST,  mk(row["DestArea"]))
             self.table.setItem(r, COL_QTY,   mk(row["Qty"]))
+            self.table.setItem(r, COL_MULTI, mk(row["MultiLocation"]))
 
             # ── COL_STOCK: green/red toggle switch ───────────────────────────
             toggle = ToggleSwitch(is_stock)

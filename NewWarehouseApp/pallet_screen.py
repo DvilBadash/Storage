@@ -17,13 +17,13 @@ class PalletAssignmentScreen(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(14)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
 
         # Title
         title = QLabel("שלב 2: שיוך משטח לאיתור יעד")
         title.setObjectName("section_title")
-        title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
         root.addWidget(title)
 
         # Top row: pallet selection
@@ -35,7 +35,9 @@ class PalletAssignmentScreen(QWidget):
         lbl1.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
 
         self.cmb_pallet = QComboBox()
-        self.cmb_pallet.setMinimumWidth(180)
+        self.cmb_pallet.setMinimumWidth(220)
+        self.cmb_pallet.setEditable(True)
+        self.cmb_pallet.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.cmb_pallet.currentIndexChanged.connect(self._on_pallet_changed)
 
         top_lay.addStretch()
@@ -87,13 +89,17 @@ class PalletAssignmentScreen(QWidget):
         ck_lay.addWidget(self.lbl_in_stock)
         det_lay.addLayout(ck_lay)
 
-        # Items table
-        self.tbl_items = QTableWidget(0, 7)
+        # Items table (11 columns matching STOCK.xlsx fields)
+        self.tbl_items = QTableWidget(0, 11)
         self.tbl_items.setHorizontalHeaderLabels(db.get_item_headers())
-        self.tbl_items.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        hh = self.tbl_items.horizontalHeader()
+        hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)   # מק"ט
+        hh.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)   # Bin
+        hh.setMaximumSectionSize(180)
         self.tbl_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.tbl_items.setAlternatingRowColors(True)
-        self.tbl_items.setMaximumHeight(220)
+        self.tbl_items.setMaximumHeight(210)
         self._apply_item_col_visibility()
         det_lay.addWidget(self.tbl_items)
 
@@ -147,7 +153,7 @@ class PalletAssignmentScreen(QWidget):
         self.cmb_pallet.addItem("-- בחר משטח --", None)
         for p in db.get_pallets():
             status_icon = {"ממוקם": "✔", "יצא": "→", "הוקם": "●"}.get(p["Status"], "")
-            self.cmb_pallet.addItem(f"{status_icon} P-{p['PalletID']}  [{p['Status']}]", p["PalletID"])
+            self.cmb_pallet.addItem(f"{status_icon} {p['PalletID']}  [{p['Status']}]", p["PalletID"])
         self.cmb_pallet.blockSignals(False)
 
     def _load_areas(self):
@@ -188,8 +194,11 @@ class PalletAssignmentScreen(QWidget):
 
         items = db.get_pallet_items(pallet_id)
         self.tbl_items.setRowCount(len(items))
+        ITEM_KEYS = ["Pn", "Material", "UnitOfMeasure", "Batch", "WBS",
+                     "Storage", "StorageType", "Bin", "Qty",
+                     "DedicatedStrategy", "MultiLocation"]
         for r, item in enumerate(items):
-            for c, key in enumerate(["Pn", "Batch", "WBS", "Storage", "Area", "Bin", "Qty"]):
+            for c, key in enumerate(ITEM_KEYS):
                 val = item[key] if key in item.keys() else ""
                 it  = QTableWidgetItem(str(val or ""))
                 it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -222,12 +231,12 @@ class PalletAssignmentScreen(QWidget):
             db.assign_pallet_to_bin(pallet_id, target_bin, self.username)
             self._on_pallet_changed()
             self._reload_pallets()
-            QMessageBox.information(self, "הצלחה", f"משטח P-{pallet_id} שויך לאיתור {target_bin} ✓")
+            QMessageBox.information(self, "הצלחה", f"משטח {pallet_id} שויך לאיתור {target_bin} ✓")
         except ValueError as e:
             QMessageBox.critical(self, "שגיאת שיוך", str(e))
 
     def _apply_item_col_visibility(self):
-        for i in range(7):
+        for i in range(11):
             self.tbl_items.setColumnHidden(i, db.get_col_hidden(f"item_col_{i}"))
 
     def refresh(self):

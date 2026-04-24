@@ -35,17 +35,19 @@ def init_db():
                 Details         TEXT
             );
             CREATE TABLE IF NOT EXISTS InventoryOld (
-                InventoryID INTEGER PRIMARY KEY AUTOINCREMENT,
-                Cat         TEXT,
-                Pn          TEXT NOT NULL,
-                Batch       TEXT NOT NULL DEFAULT '',
-                WBS         TEXT NOT NULL DEFAULT '',
-                Storage     TEXT NOT NULL DEFAULT '',
-                Area        TEXT NOT NULL DEFAULT '',
-                Bin         TEXT NOT NULL DEFAULT '',
-                DestArea    TEXT,
-                Qty         REAL,
-                IsInStock   INTEGER NOT NULL DEFAULT 0,
+                InventoryID   INTEGER PRIMARY KEY AUTOINCREMENT,
+                Cat           TEXT,
+                Pn            TEXT NOT NULL,
+                UnitOfMeasure TEXT NOT NULL DEFAULT '',
+                Batch         TEXT NOT NULL DEFAULT '',
+                WBS           TEXT NOT NULL DEFAULT '',
+                Storage       TEXT NOT NULL DEFAULT '',
+                Area          TEXT NOT NULL DEFAULT '',
+                Bin           TEXT NOT NULL DEFAULT '',
+                DestArea      TEXT,
+                Qty           REAL,
+                MultiLocation TEXT NOT NULL DEFAULT '',
+                IsInStock     INTEGER NOT NULL DEFAULT 0,
                 UNIQUE (Pn, Batch, WBS, Storage, Area, Bin)
             );
             CREATE TABLE IF NOT EXISTS Pallets (
@@ -67,27 +69,35 @@ def init_db():
             );
         """)
         _seed_settings(c)
-        # Migration: add IsInStock column to existing databases that predate it
-        try:
-            c.execute("ALTER TABLE InventoryOld ADD COLUMN IsInStock INTEGER NOT NULL DEFAULT 0")
-        except Exception:
-            pass
+        # Migrations for existing databases
+        for col, defn in [
+            ("UnitOfMeasure", "TEXT NOT NULL DEFAULT ''"),
+            ("MultiLocation",  "TEXT NOT NULL DEFAULT ''"),
+            ("IsInStock",      "INTEGER NOT NULL DEFAULT 0"),
+        ]:
+            try:
+                c.execute(f"ALTER TABLE InventoryOld ADD COLUMN {col} {defn}")
+            except Exception:
+                pass
         c.commit()
 
 
+# Columns 1-14 map to the 14 content columns (col 0 = checkbox, no header needed)
 DEFAULT_COL_HEADERS = {
-    "inv_col_1":  "PN",
-    "inv_col_2":  "קטלוגי",
-    "inv_col_3":  "אצווה",
-    "inv_col_4":  "WBS",
-    "inv_col_5":  "אחסון",
-    "inv_col_6":  "אזור",
-    "inv_col_7":  "Bin",
-    "inv_col_8":  "יעד",
-    "inv_col_9":  "כמות",
-    "inv_col_10": "קיים פיזית",
-    "inv_col_11": "⚠",
-    "inv_col_12": "משטח",
+    "inv_col_1":  'מק"ט',
+    "inv_col_2":  "חומר",
+    "inv_col_3":  "יחידת מידה",
+    "inv_col_4":  "סדרה",
+    "inv_col_5":  "WBS",
+    "inv_col_6":  "אתר אחסון",
+    "inv_col_7":  "סוג איחסון",
+    "inv_col_8":  "איתור איחסון",
+    "inv_col_9":  "אסטרטגיה ייעודית",
+    "inv_col_10": "מלאי זמין",
+    "inv_col_11": "האם > איתור אחד",
+    "inv_col_12": "קיים פיזית",
+    "inv_col_13": "⚠",
+    "inv_col_14": "משטח",
 }
 
 
@@ -103,14 +113,14 @@ def _seed_settings(c):
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
     for k, v in DEFAULT_COL_HEADERS.items():
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
-    for i in range(1, 13):
+    for i in range(1, 15):
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (f"inv_col_{i}_hidden", "0"))
 
 
 def get_column_headers() -> list[str]:
-    """Returns 13-element list: index 0 = '' (checkbox), 1-12 = custom/default labels."""
+    """Returns 15-element list: index 0 = '' (checkbox col), 1-14 = custom/default labels."""
     result = [""]
-    for i in range(1, 13):
+    for i in range(1, 15):
         result.append(get_setting(f"inv_col_{i}", DEFAULT_COL_HEADERS.get(f"inv_col_{i}", "")))
     return result
 
@@ -198,10 +208,10 @@ def set_user_active(user_id: int, active: bool):
 
 def get_inventory_with_assignments(pn="", storage="", area="", bin_="",
                                     limit=500, unassigned_only=False):
-    """Single JOIN query — no N+1. Returns up to `limit` rows."""
     sql = """
-        SELECT i.InventoryID, i.Cat, i.Pn, i.Batch, i.WBS,
-               i.Storage, i.Area, i.Bin, i.DestArea, i.Qty, i.IsInStock,
+        SELECT i.InventoryID, i.Cat, i.Pn, i.UnitOfMeasure, i.Batch, i.WBS,
+               i.Storage, i.Area, i.Bin, i.DestArea, i.Qty, i.MultiLocation,
+               i.IsInStock,
                pa.PalletID, pa.AssignDate
         FROM InventoryOld i
         LEFT JOIN PALLET_Assignment pa ON i.InventoryID = pa.InventoryID
@@ -223,7 +233,6 @@ def get_inventory_with_assignments(pn="", storage="", area="", bin_="",
         return c.execute(sql, params).fetchall()
 
 
-# kept for backwards compat
 def get_inventory(pn="", storage="", area="", bin_=""):
     return get_inventory_with_assignments(pn, storage, area, bin_, limit=500)
 
@@ -241,7 +250,6 @@ def get_distinct_values(col: str):
 
 
 def set_is_in_stock(inv_id: int, value: bool, user: str):
-    """Persist IsInStock directly on InventoryOld row."""
     with get_conn() as c:
         c.execute("UPDATE InventoryOld SET IsInStock=? WHERE InventoryID=?",
                   (1 if value else 0, inv_id))
@@ -249,7 +257,6 @@ def set_is_in_stock(inv_id: int, value: bool, user: str):
     log(user, "UPDATE_ISINSTOCK", f"InventoryID={inv_id} IsInStock={value}")
 
 
-# alias used by older code
 def upsert_is_in_stock(inv_id: int, value: bool, user: str):
     set_is_in_stock(inv_id, value, user)
 
@@ -279,10 +286,6 @@ def get_pallets():
 
 
 def import_pallets_from_rows(rows: list[dict], user: str) -> dict:
-    """Bulk-import pallet assignments from Excel rows.
-    Matches inventory items by (Pn, Batch, WBS, Storage, Area, Bin).
-    Returns {'assigned': int, 'not_found': list[str]}.
-    """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     assigned = 0
     not_found = []
@@ -336,7 +339,6 @@ def detach_item_from_pallet(inv_id: int, user: str):
 
 
 def assign_items_to_pallet(inv_ids: list, pallet_id: int, user: str):
-    """Assign items to pallet; IsInStock is read from InventoryOld."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
         for inv_id in inv_ids:
@@ -383,8 +385,8 @@ def bulk_insert_inventory(rows: list[dict]):
         for r in rows:
             c.execute(
                 """INSERT OR IGNORE INTO InventoryOld
-                   (Cat,Pn,Batch,WBS,Storage,Area,Bin,DestArea,Qty)
-                   VALUES (:Cat,:Pn,:Batch,:WBS,:Storage,:Area,:Bin,:DestArea,:Qty)""",
+                   (Cat,Pn,UnitOfMeasure,Batch,WBS,Storage,Area,Bin,DestArea,Qty,MultiLocation)
+                   VALUES (:Cat,:Pn,:UnitOfMeasure,:Batch,:WBS,:Storage,:Area,:Bin,:DestArea,:Qty,:MultiLocation)""",
                 r,
             )
         c.commit()

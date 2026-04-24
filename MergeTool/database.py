@@ -34,22 +34,24 @@ def init_db():
                 ActionType      TEXT,
                 Details         TEXT
             );
-            -- Loaded from OldWarehouseApp export
+            -- Loaded from OldWarehouseApp export / STOCK.xlsx
             CREATE TABLE IF NOT EXISTS StagingInventory (
-                RowID       INTEGER PRIMARY KEY AUTOINCREMENT,
-                Cat         TEXT,
-                Pn          TEXT,
-                Batch       TEXT,
-                WBS         TEXT,
-                Storage     TEXT,
-                Area        TEXT,
-                Bin         TEXT,
-                DestArea    TEXT,
-                Qty         REAL,
-                PalletID    INTEGER,
-                IsInStock   INTEGER,
-                AssignDate  TEXT,
-                TargetBin   TEXT
+                RowID         INTEGER PRIMARY KEY AUTOINCREMENT,
+                Cat           TEXT,
+                Pn            TEXT,
+                UnitOfMeasure TEXT,
+                Batch         TEXT,
+                WBS           TEXT,
+                Storage       TEXT,
+                Area          TEXT,
+                Bin           TEXT,
+                DestArea      TEXT,
+                Qty           REAL,
+                MultiLocation TEXT,
+                PalletID      INTEGER,
+                IsInStock     INTEGER,
+                AssignDate    TEXT,
+                TargetBin     TEXT
             );
             -- Loaded from NewWarehouseApp export
             CREATE TABLE IF NOT EXISTS StagingNewWarehouse (
@@ -74,25 +76,38 @@ def init_db():
             );
             -- Current unified output
             CREATE TABLE IF NOT EXISTS UnifiedInventory (
-                RowID      INTEGER PRIMARY KEY AUTOINCREMENT,
-                Cat        TEXT,
-                Pn         TEXT,
-                Batch      TEXT,
-                WBS        TEXT,
-                Storage    TEXT,
-                Area       TEXT,
-                Bin        TEXT,
-                DestArea   TEXT,
-                Qty        REAL,
-                PalletID   INTEGER,
-                IsInStock  INTEGER,
-                TargetBin  TEXT,
-                Status     TEXT,
-                AssignDate TEXT,
-                MergeDate  TEXT
+                RowID         INTEGER PRIMARY KEY AUTOINCREMENT,
+                Cat           TEXT,
+                Pn            TEXT,
+                UnitOfMeasure TEXT,
+                Batch         TEXT,
+                WBS           TEXT,
+                Storage       TEXT,
+                Area          TEXT,
+                Bin           TEXT,
+                DestArea      TEXT,
+                Qty           REAL,
+                MultiLocation TEXT,
+                PalletID      INTEGER,
+                IsInStock     INTEGER,
+                TargetBin     TEXT,
+                Status        TEXT,
+                AssignDate    TEXT,
+                MergeDate     TEXT
             );
         """)
         _seed_settings(c)
+        # Migrations for existing databases
+        for tbl, col, defn in [
+            ("StagingInventory", "UnitOfMeasure", "TEXT DEFAULT ''"),
+            ("StagingInventory", "MultiLocation",  "TEXT DEFAULT ''"),
+            ("UnifiedInventory", "UnitOfMeasure", "TEXT DEFAULT ''"),
+            ("UnifiedInventory", "MultiLocation",  "TEXT DEFAULT ''"),
+        ]:
+            try:
+                c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {defn}")
+            except Exception:
+                pass
         c.commit()
 
 
@@ -185,9 +200,26 @@ def bulk_insert_staging_old(rows: list[dict]):
         for r in rows:
             c.execute(
                 """INSERT INTO StagingInventory
-                   (Cat,Pn,Batch,WBS,Storage,Area,Bin,DestArea,Qty,PalletID,IsInStock,AssignDate,TargetBin)
-                   VALUES (:Cat,:Pn,:Batch,:WBS,:Storage,:Area,:Bin,:DestArea,:Qty,:PalletID,:IsInStock,:AssignDate,:TargetBin)""",
-                r,
+                   (Cat,Pn,UnitOfMeasure,Batch,WBS,Storage,Area,Bin,DestArea,
+                    Qty,MultiLocation,PalletID,IsInStock,AssignDate,TargetBin)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    r.get("Cat", ""),
+                    r.get("Pn",  r.get("PN", "")),
+                    r.get("UnitOfMeasure", ""),
+                    r.get("Batch", ""),
+                    r.get("WBS", ""),
+                    r.get("Storage", ""),
+                    r.get("Area", ""),
+                    r.get("Bin", ""),
+                    r.get("DestArea", ""),
+                    r.get("Qty") or 0.0,
+                    r.get("MultiLocation", ""),
+                    r.get("PalletID"),
+                    r.get("IsInStock", 0),
+                    r.get("AssignDate"),
+                    r.get("TargetBin"),
+                ),
             )
         c.commit()
 
@@ -203,7 +235,6 @@ def bulk_insert_staging_new(rows: list[dict]):
 
 
 def archive_unified_to_prev():
-    """Copy current UnifiedInventory → UnifiedPrev for delta logic."""
     with get_conn() as c:
         c.execute("DELETE FROM UnifiedPrev")
         c.execute(
@@ -217,18 +248,16 @@ def run_merge(user: str) -> int:
     """Main merge logic. Returns count of rows in UnifiedInventory."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
-        # Build lookup: PalletID → (Status, TargetBin, AssignDate) from new warehouse
         new_ws = {}
         for row in c.execute("SELECT * FROM StagingNewWarehouse"):
             pid = row["PalletID"]
             if pid:
                 new_ws[int(pid)] = {
-                    "Status": row["Status"] or "הוקם",
-                    "TargetBin": row["TargetBin"] or "",
+                    "Status":     row["Status"] or "הוקם",
+                    "TargetBin":  row["TargetBin"] or "",
                     "AssignDate": row["AssignDate"] or "",
                 }
 
-        # Build previous unified lookup: key → (PalletID, TargetBin, Status)
         prev_lookup = {}
         for row in c.execute("SELECT * FROM UnifiedPrev"):
             key = (row["Pn"], row["Batch"], row["WBS"], row["Storage"], row["Area"], row["Bin"])
@@ -238,7 +267,6 @@ def run_merge(user: str) -> int:
                 "Status": row["Status"],
             }
 
-        # Clear current unified
         c.execute("DELETE FROM UnifiedInventory")
 
         staging_rows = c.execute("SELECT * FROM StagingInventory").fetchall()
@@ -252,13 +280,11 @@ def run_merge(user: str) -> int:
 
             if pallet_id:
                 pallet_id = int(float(str(pallet_id)))
-                # Get status from new warehouse
                 if pallet_id in new_ws:
                     nw = new_ws[pallet_id]
                     target_bin  = nw["TargetBin"] or target_bin
                     status      = nw["Status"]
                     assign_date = nw["AssignDate"] or assign_date
-                # Delta: if key existed before and same location → carry forward
                 elif key in prev_lookup:
                     prev = prev_lookup[key]
                     if prev["PalletID"] == pallet_id:
@@ -267,12 +293,15 @@ def run_merge(user: str) -> int:
 
             c.execute(
                 """INSERT INTO UnifiedInventory
-                   (Cat,Pn,Batch,WBS,Storage,Area,Bin,DestArea,Qty,
-                    PalletID,IsInStock,TargetBin,Status,AssignDate,MergeDate)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (Cat,Pn,UnitOfMeasure,Batch,WBS,Storage,Area,Bin,DestArea,Qty,
+                    MultiLocation,PalletID,IsInStock,TargetBin,Status,AssignDate,MergeDate)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    row["Cat"], row["Pn"], row["Batch"], row["WBS"],
+                    row["Cat"], row["Pn"],
+                    row["UnitOfMeasure"] if "UnitOfMeasure" in row.keys() else "",
+                    row["Batch"], row["WBS"],
                     row["Storage"], row["Area"], row["Bin"], row["DestArea"], row["Qty"],
+                    row["MultiLocation"] if "MultiLocation" in row.keys() else "",
                     pallet_id if pallet_id else None,
                     row["IsInStock"], target_bin, status, assign_date, now,
                 ),
