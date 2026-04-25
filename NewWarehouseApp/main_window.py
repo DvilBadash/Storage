@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
     QLabel, QPushButton, QFrame, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QFont
 import database as db
 import styles
 from home_screen import HomeScreen
@@ -75,7 +74,6 @@ class MainWindow(QMainWindow):
         wh = db.get_setting("warehouse_name", "YYY")
         self.header_title = QLabel(f"WMS – ניהול העברת מלאי  |  מחסן: {wh}")
         self.header_title.setObjectName("header_title")
-        self.header_title.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
         lay.addWidget(self.header_title)
         return header
 

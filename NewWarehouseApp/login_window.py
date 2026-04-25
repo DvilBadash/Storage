@@ -3,7 +3,6 @@ from PyQt6.QtWidgets import (
     QPushButton, QComboBox, QMessageBox,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
 import database as db
 
 
@@ -51,7 +50,6 @@ class LoginWindow(QDialog):
 
         btn = QPushButton("כניסה")
         btn.setMinimumHeight(52)
-        btn.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
         btn.clicked.connect(self._on_login)
         body.addWidget(btn)
         root.addLayout(body)

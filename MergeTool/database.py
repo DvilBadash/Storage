@@ -48,7 +48,7 @@ def init_db():
                 DestArea      TEXT,
                 Qty           REAL,
                 MultiLocation TEXT,
-                PalletID      INTEGER,
+                PalletID      TEXT,
                 IsInStock     INTEGER,
                 AssignDate    TEXT,
                 TargetBin     TEXT
@@ -56,7 +56,7 @@ def init_db():
             -- Loaded from NewWarehouseApp export
             CREATE TABLE IF NOT EXISTS StagingNewWarehouse (
                 RowID      INTEGER PRIMARY KEY AUTOINCREMENT,
-                PalletID   INTEGER,
+                PalletID   TEXT,
                 Status     TEXT,
                 TargetBin  TEXT,
                 AssignDate TEXT
@@ -70,7 +70,7 @@ def init_db():
                 Storage  TEXT,
                 Area     TEXT,
                 Bin      TEXT,
-                PalletID INTEGER,
+                PalletID TEXT,
                 TargetBin TEXT,
                 Status   TEXT
             );
@@ -88,7 +88,7 @@ def init_db():
                 DestArea      TEXT,
                 Qty           REAL,
                 MultiLocation TEXT,
-                PalletID      INTEGER,
+                PalletID      TEXT,
                 IsInStock     INTEGER,
                 TargetBin     TEXT,
                 Status        TEXT,
@@ -109,6 +109,90 @@ def init_db():
             except Exception:
                 pass
         c.commit()
+    _migrate_pallet_id_to_text()
+
+
+def _migrate_pallet_id_to_text():
+    """Rebuild staging/unified tables to use TEXT PalletID (no-op if already TEXT)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        migrations = {
+            "StagingInventory": """
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _SI_new (
+                    RowID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Cat TEXT, Pn TEXT, UnitOfMeasure TEXT DEFAULT '',
+                    Batch TEXT, WBS TEXT, Storage TEXT, Area TEXT,
+                    Bin TEXT, DestArea TEXT, Qty REAL,
+                    MultiLocation TEXT DEFAULT '', PalletID TEXT,
+                    IsInStock INTEGER, AssignDate TEXT, TargetBin TEXT
+                );
+                INSERT OR IGNORE INTO _SI_new
+                    SELECT RowID, Cat, Pn, UnitOfMeasure, Batch, WBS, Storage, Area,
+                           Bin, DestArea, Qty, MultiLocation,
+                           CASE WHEN PalletID IS NULL THEN NULL ELSE CAST(PalletID AS TEXT) END,
+                           IsInStock, AssignDate, TargetBin
+                    FROM StagingInventory;
+                DROP TABLE StagingInventory;
+                ALTER TABLE _SI_new RENAME TO StagingInventory;
+            """,
+            "StagingNewWarehouse": """
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _SN_new (
+                    RowID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PalletID TEXT, Status TEXT, TargetBin TEXT, AssignDate TEXT
+                );
+                INSERT OR IGNORE INTO _SN_new
+                    SELECT RowID,
+                           CASE WHEN PalletID IS NULL THEN NULL ELSE CAST(PalletID AS TEXT) END,
+                           Status, TargetBin, AssignDate
+                    FROM StagingNewWarehouse;
+                DROP TABLE StagingNewWarehouse;
+                ALTER TABLE _SN_new RENAME TO StagingNewWarehouse;
+            """,
+            "UnifiedPrev": """
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _UP_new (
+                    RowID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Pn TEXT, Batch TEXT, WBS TEXT, Storage TEXT, Area TEXT, Bin TEXT,
+                    PalletID TEXT, TargetBin TEXT, Status TEXT
+                );
+                INSERT OR IGNORE INTO _UP_new
+                    SELECT RowID, Pn, Batch, WBS, Storage, Area, Bin,
+                           CASE WHEN PalletID IS NULL THEN NULL ELSE CAST(PalletID AS TEXT) END,
+                           TargetBin, Status
+                    FROM UnifiedPrev;
+                DROP TABLE UnifiedPrev;
+                ALTER TABLE _UP_new RENAME TO UnifiedPrev;
+            """,
+            "UnifiedInventory": """
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _UI_new (
+                    RowID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    Cat TEXT, Pn TEXT, UnitOfMeasure TEXT DEFAULT '',
+                    Batch TEXT, WBS TEXT, Storage TEXT, Area TEXT,
+                    Bin TEXT, DestArea TEXT, Qty REAL,
+                    MultiLocation TEXT DEFAULT '', PalletID TEXT,
+                    IsInStock INTEGER, TargetBin TEXT, Status TEXT,
+                    AssignDate TEXT, MergeDate TEXT
+                );
+                INSERT OR IGNORE INTO _UI_new
+                    SELECT RowID, Cat, Pn, UnitOfMeasure, Batch, WBS, Storage, Area,
+                           Bin, DestArea, Qty, MultiLocation,
+                           CASE WHEN PalletID IS NULL THEN NULL ELSE CAST(PalletID AS TEXT) END,
+                           IsInStock, TargetBin, Status, AssignDate, MergeDate
+                    FROM UnifiedInventory;
+                DROP TABLE UnifiedInventory;
+                ALTER TABLE _UI_new RENAME TO UnifiedInventory;
+            """,
+        }
+        for tbl, script in migrations.items():
+            info = {r["name"]: r["type"] for r in conn.execute(f"PRAGMA table_info({tbl})")}
+            if info.get("PalletID", "TEXT") != "TEXT":
+                conn.executescript(script)
+    finally:
+        conn.close()
 
 
 def _seed_settings(c):
@@ -252,7 +336,7 @@ def run_merge(user: str) -> int:
         for row in c.execute("SELECT * FROM StagingNewWarehouse"):
             pid = row["PalletID"]
             if pid:
-                new_ws[int(pid)] = {
+                new_ws[str(pid).strip()] = {
                     "Status":     row["Status"] or "הוקם",
                     "TargetBin":  row["TargetBin"] or "",
                     "AssignDate": row["AssignDate"] or "",
@@ -262,7 +346,7 @@ def run_merge(user: str) -> int:
         for row in c.execute("SELECT * FROM UnifiedPrev"):
             key = (row["Pn"], row["Batch"], row["WBS"], row["Storage"], row["Area"], row["Bin"])
             prev_lookup[key] = {
-                "PalletID": row["PalletID"],
+                "PalletID": str(row["PalletID"]).strip() if row["PalletID"] else None,
                 "TargetBin": row["TargetBin"],
                 "Status": row["Status"],
             }
@@ -279,7 +363,7 @@ def run_merge(user: str) -> int:
             assign_date = row["AssignDate"] or ""
 
             if pallet_id:
-                pallet_id = int(float(str(pallet_id)))
+                pallet_id = str(pallet_id).strip()
                 if pallet_id in new_ws:
                     nw = new_ws[pallet_id]
                     target_bin  = nw["TargetBin"] or target_bin
@@ -302,7 +386,7 @@ def run_merge(user: str) -> int:
                     row["Batch"], row["WBS"],
                     row["Storage"], row["Area"], row["Bin"], row["DestArea"], row["Qty"],
                     row["MultiLocation"] if "MultiLocation" in row.keys() else "",
-                    pallet_id if pallet_id else None,
+                    pallet_id or None,
                     row["IsInStock"], target_bin, status, assign_date, now,
                 ),
             )
@@ -323,10 +407,7 @@ def get_unified_inventory(pn="", status="", pallet_id=""):
     if status:
         sql += " AND Status=?"; params.append(status)
     if pallet_id:
-        try:
-            sql += " AND PalletID=?"; params.append(int(pallet_id))
-        except ValueError:
-            pass
+        sql += " AND PalletID=?"; params.append(str(pallet_id))
     sql += " ORDER BY Pn, Batch LIMIT 5000"
     with get_conn() as c:
         return c.execute(sql, params).fetchall()

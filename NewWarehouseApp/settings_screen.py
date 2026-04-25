@@ -7,7 +7,6 @@ from PyQt6.QtWidgets import (
     QScrollArea, QGridLayout, QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
 import database as db
 import excel_handler as xh
 
@@ -26,12 +25,10 @@ class SettingsScreen(QWidget):
         root.setContentsMargins(16, 16, 16, 16)
         title = QLabel("הגדרות מערכת")
         title.setObjectName("section_title")
-        title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
         root.addWidget(title)
         tabs = QTabWidget()
         tabs.addTab(self._general_tab(),  "כללי")
         tabs.addTab(self._data_tab(),     "נתונים")
-        tabs.addTab(self._columns_tab(),  "כותרות עמודות")
         tabs.addTab(self._users_tab(),    "משתמשים")
         tabs.addTab(self._log_tab(),      "לוג פעולות")
         root.addWidget(tabs)
@@ -73,55 +70,28 @@ class SettingsScreen(QWidget):
 
     def _data_tab(self):
         w = QWidget()
-        lay = QVBoxLayout(w); lay.setContentsMargins(20,20,20,20); lay.setSpacing(14)
+        lay = QVBoxLayout(w); lay.setContentsMargins(24, 24, 24, 24); lay.setSpacing(16)
 
-        grp_loc = QGroupBox("טעינת איתורים (LocationNew)")
-        g_loc = QVBoxLayout(grp_loc); g_loc.setSpacing(12)
-        info = QLabel("צפוי קובץ newBIns.xlsx עם עמודות: סביבתי / ממוזג, אזור WM, איתור")
-        info.setStyleSheet("color: #616161; font-size: 12px;")
-        g_loc.addWidget(info)
-        btn_loc = QPushButton("📂 טעינת קובץ איתורים (Excel)")
-        btn_loc.clicked.connect(self._load_locations)
-        g_loc.addWidget(btn_loc)
-        lay.addWidget(grp_loc)
-
-        grp_pal = QGroupBox("ייבוא משטחים ממחסן ישן")
-        g_pal = QVBoxLayout(grp_pal); g_pal.setSpacing(12)
-        info2 = QLabel(
-            "יובא קובץ FinalOutput.xlsx (גיליון Merge1) מכלי המיזוג.\n"
-            'הקובץ מכיל: מק"ט, חומר, יחידת מידה, סדרה, WBS, Pallet, Is_In_Stock, אזור WM, איתור...'
-        )
-        info2.setStyleSheet("color: #616161; font-size: 12px;")
-        g_pal.addWidget(info2)
-        btn_pal = QPushButton("📂 ייבוא משטחים ממחסן ישן")
-        btn_pal.clicked.connect(self._import_pallets)
-        g_pal.addWidget(btn_pal)
-
+        btn_inv = QPushButton("📂  טעינת קובץ מלאי")
+        btn_inv.setMinimumHeight(52)
+        btn_inv.clicked.connect(self._import_pallets)
+        lay.addWidget(btn_inv)
         self.lbl_last_import = QLabel(f"ייבוא אחרון: {db.get_setting('last_pallet_import') or 'לא בוצע'}")
-        self.lbl_last_import.setStyleSheet("color: #616161; font-size: 12px;")
-        g_pal.addWidget(self.lbl_last_import)
-        lay.addWidget(grp_pal)
+        self.lbl_last_import.setObjectName("status_label")
+        lay.addWidget(self.lbl_last_import)
 
-        grp_codes = QGroupBox("טעינת רשימת קודי משטחים (Pallets.xlsx)")
-        g_codes = QVBoxLayout(grp_codes); g_codes.setSpacing(12)
-        info3 = QLabel("טען קובץ עם עמודה אחת 'Pallet' המכילה קודי משטח (לדוגמה: P-001...P-5000).\nהקודים יטענו לרשימת הבחירה של 'בחר משטח' במסך השיוך.")
-        info3.setStyleSheet("color: #616161; font-size: 12px;")
-        g_codes.addWidget(info3)
-        btn_codes = QPushButton("📂 טעינת קודי משטחים מ-Excel")
-        btn_codes.clicked.connect(self._load_pallet_codes)
-        g_codes.addWidget(btn_codes)
+        btn_pal = QPushButton("📋  קליטת רשימת משטחים")
+        btn_pal.setMinimumHeight(52)
+        btn_pal.clicked.connect(self._load_pallet_codes)
+        lay.addWidget(btn_pal)
         self.lbl_pallet_codes = QLabel(f"ייבוא אחרון: {db.get_setting('last_pallet_import') or 'לא בוצע'}")
-        self.lbl_pallet_codes.setStyleSheet("color: #616161; font-size: 12px;")
-        g_codes.addWidget(self.lbl_pallet_codes)
-        lay.addWidget(grp_codes)
+        self.lbl_pallet_codes.setObjectName("status_label")
+        lay.addWidget(self.lbl_pallet_codes)
 
-        grp_exp = QGroupBox("יצוא נתוני שיוכים")
-        g_exp = QVBoxLayout(grp_exp); g_exp.setSpacing(12)
-        btn_exp = QPushButton("💾 יצוא שיוכי משטחים (Excel)")
-        btn_exp.setObjectName("btn_secondary")
+        btn_exp = QPushButton("💾  יצוא שיוכים")
+        btn_exp.setMinimumHeight(52)
         btn_exp.clicked.connect(self._export_assignments)
-        g_exp.addWidget(btn_exp)
-        lay.addWidget(grp_exp)
+        lay.addWidget(btn_exp)
 
         lay.addStretch()
         return w
@@ -325,6 +295,12 @@ class SettingsScreen(QWidget):
         db.bulk_insert_pallet_codes(codes, self.username)
         self.lbl_pallet_codes.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
         QMessageBox.information(self, "הצלחה", f"נטענו {len(codes)} קודי משטחים ✓")
+
+    def _create_pallet_codes_sample(self):
+        export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
+        path = xh.archive_path(export_dir, "Pallets_Sample")
+        xh.create_pallet_codes_sample(path)
+        QMessageBox.information(self, "הצלחה", f"קובץ דוגמא נוצר:\n{path}")
 
     def _export_assignments(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))

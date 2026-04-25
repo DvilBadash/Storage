@@ -51,7 +51,7 @@ def init_db():
                 UNIQUE (Pn, Batch, WBS, Storage, Area, Bin)
             );
             CREATE TABLE IF NOT EXISTS Pallets (
-                PalletID   INTEGER PRIMARY KEY,
+                PalletID   TEXT PRIMARY KEY,
                 CreateDate TEXT,
                 CreateUser TEXT,
                 Status     TEXT DEFAULT 'הוקם'
@@ -59,7 +59,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS PALLET_Assignment (
                 AssignmentID INTEGER PRIMARY KEY AUTOINCREMENT,
                 InventoryID  INTEGER NOT NULL,
-                PalletID     INTEGER NOT NULL,
+                PalletID     TEXT NOT NULL,
                 IsInStock    INTEGER DEFAULT 0,
                 TargetBin    TEXT,
                 AssignDate   TEXT,
@@ -80,24 +80,67 @@ def init_db():
             except Exception:
                 pass
         c.commit()
+    _migrate_pallet_id_to_text()
 
 
-# Columns 1-14 map to the 14 content columns (col 0 = checkbox, no header needed)
+def _migrate_pallet_id_to_text():
+    """Rebuild Pallets and PALLET_Assignment to use TEXT PalletID (no-op if already TEXT)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    try:
+        pal_info = {r["name"]: r["type"] for r in conn.execute("PRAGMA table_info(Pallets)")}
+        if pal_info.get("PalletID", "TEXT") != "TEXT":
+            conn.executescript("""
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _Pallets_new (
+                    PalletID   TEXT PRIMARY KEY,
+                    CreateDate TEXT,
+                    CreateUser TEXT,
+                    Status     TEXT DEFAULT 'הוקם'
+                );
+                INSERT OR IGNORE INTO _Pallets_new
+                    SELECT CAST(PalletID AS TEXT), CreateDate, CreateUser, Status
+                    FROM Pallets;
+                DROP TABLE Pallets;
+                ALTER TABLE _Pallets_new RENAME TO Pallets;
+            """)
+        pa_info = {r["name"]: r["type"] for r in conn.execute("PRAGMA table_info(PALLET_Assignment)")}
+        if pa_info.get("PalletID", "TEXT") != "TEXT":
+            conn.executescript("""
+                PRAGMA foreign_keys = OFF;
+                CREATE TABLE _PA_new (
+                    AssignmentID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    InventoryID  INTEGER NOT NULL,
+                    PalletID     TEXT NOT NULL,
+                    IsInStock    INTEGER DEFAULT 0,
+                    TargetBin    TEXT,
+                    AssignDate   TEXT,
+                    FOREIGN KEY (InventoryID) REFERENCES InventoryOld(InventoryID),
+                    FOREIGN KEY (PalletID)    REFERENCES Pallets(PalletID),
+                    UNIQUE (InventoryID)
+                );
+                INSERT OR IGNORE INTO _PA_new
+                    SELECT AssignmentID, InventoryID, CAST(PalletID AS TEXT),
+                           IsInStock, TargetBin, AssignDate
+                    FROM PALLET_Assignment;
+                DROP TABLE PALLET_Assignment;
+                ALTER TABLE _PA_new RENAME TO PALLET_Assignment;
+            """)
+    finally:
+        conn.close()
+
+
+# Columns 1-9 map to the 9 content columns (col 0 = checkbox, no header needed)
 DEFAULT_COL_HEADERS = {
-    "inv_col_1":  'מק"ט',
-    "inv_col_2":  "חומר",
-    "inv_col_3":  "יחידת מידה",
-    "inv_col_4":  "סדרה",
-    "inv_col_5":  "WBS",
-    "inv_col_6":  "אתר אחסון",
-    "inv_col_7":  "סוג איחסון",
-    "inv_col_8":  "איתור איחסון",
-    "inv_col_9":  "אסטרטגיה ייעודית",
-    "inv_col_10": "מלאי זמין",
-    "inv_col_11": "האם > איתור אחד",
-    "inv_col_12": "קיים פיזית",
-    "inv_col_13": "⚠",
-    "inv_col_14": "משטח",
+    "inv_col_1": "PN / מספר חלק",
+    "inv_col_2": "מס' קטלוגי",
+    "inv_col_3": "איתור",
+    "inv_col_4": "אתר איחסון",
+    "inv_col_5": "סוג איחסון",
+    "inv_col_6": "אזור יעד",
+    "inv_col_7": "ממוקם",
+    "inv_col_8": "משטח משויך",
+    "inv_col_9": "חיווי",
 }
 
 
@@ -113,14 +156,14 @@ def _seed_settings(c):
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
     for k, v in DEFAULT_COL_HEADERS.items():
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
-    for i in range(1, 15):
+    for i in range(1, 10):
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (f"inv_col_{i}_hidden", "0"))
 
 
 def get_column_headers() -> list[str]:
-    """Returns 15-element list: index 0 = '' (checkbox col), 1-14 = custom/default labels."""
+    """Returns 10-element list: index 0 = '' (checkbox col), 1-9 = custom/default labels."""
     result = [""]
-    for i in range(1, 15):
+    for i in range(1, 10):
         result.append(get_setting(f"inv_col_{i}", DEFAULT_COL_HEADERS.get(f"inv_col_{i}", "")))
     return result
 
@@ -198,10 +241,12 @@ def add_user(name: str):
         c.commit()
 
 
-def set_user_active(user_id: int, active: bool):
+def set_user_active(user_id: int, active: bool, changed_by: str = ""):
     with get_conn() as c:
         c.execute("UPDATE Users SET IsActive=? WHERE UserID=?", (1 if active else 0, user_id))
         c.commit()
+    action = "ACTIVATE_USER" if active else "DEACTIVATE_USER"
+    log(changed_by or "system", action, f"UserID={user_id}")
 
 
 # ── Inventory ─────────────────────────────────────────────────────────────────
@@ -263,12 +308,12 @@ def upsert_is_in_stock(inv_id: int, value: bool, user: str):
 
 # ── Pallets ───────────────────────────────────────────────────────────────────
 
-def pallet_exists(pallet_id: int) -> bool:
+def pallet_exists(pallet_id: str) -> bool:
     with get_conn() as c:
         return bool(c.execute("SELECT 1 FROM Pallets WHERE PalletID=?", (pallet_id,)).fetchone())
 
 
-def create_pallet(pallet_id: int, user: str):
+def create_pallet(pallet_id: str, user: str):
     if pallet_exists(pallet_id):
         raise ValueError(f"משטח {pallet_id} כבר קיים במערכת")
     with get_conn() as c:
@@ -287,13 +332,28 @@ def get_pallets():
 
 def import_pallets_from_rows(rows: list[dict], user: str) -> dict:
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    assigned = 0
+    assigned = 0   # pallets created AND linked to an inventory item
+    created  = 0   # pallets created from a simple code list (no inventory match needed)
+    cleared  = 0   # orphan pallets removed before a simple-list import
     not_found = []
+
+    # Detect simple code-list import: none of the rows carry inventory details (PN)
+    is_simple_list = all(
+        not str(r.get("PN", r.get("Pn", "")) or "").strip() for r in rows if r
+    )
+
     with get_conn() as c:
+        if is_simple_list:
+            # Remove pallets that have no assignments so the new list replaces them cleanly
+            cur = c.execute(
+                "DELETE FROM Pallets "
+                "WHERE PalletID NOT IN (SELECT DISTINCT PalletID FROM PALLET_Assignment)"
+            )
+            cleared = cur.rowcount
+
         for r in rows:
-            try:
-                pid = int(float(str(r.get("PalletID", ""))))
-            except (ValueError, TypeError):
+            pid = str(r.get("PalletID", "") or "").strip()
+            if not pid:
                 continue
             pn      = str(r.get("PN",      r.get("Pn", "")) or "").strip()
             batch   = str(r.get("Batch",   "") or "").strip()
@@ -301,6 +361,21 @@ def import_pallets_from_rows(rows: list[dict], user: str) -> dict:
             storage = str(r.get("Storage", "") or "").strip()
             area    = str(r.get("Area",    "") or "").strip()
             bin_    = str(r.get("Bin",     "") or "").strip()
+
+            # Simple pallet-code list (no inventory details) → just register the pallet
+            if not pn:
+                c.execute(
+                    """INSERT OR IGNORE INTO Pallets (PalletID, CreateDate, CreateUser, Status)
+                       VALUES (?, ?, ?, ?)""",
+                    (pid,
+                     r.get("CreateDate", now) or now,
+                     r.get("CreateUser", user) or user,
+                     r.get("Status", "הוקם") or "הוקם"),
+                )
+                created += 1
+                continue
+
+            # Full format: locate the inventory row and create assignment
             inv_row = c.execute(
                 """SELECT InventoryID FROM InventoryOld
                    WHERE Pn=? AND Batch=? AND WBS=? AND Storage=? AND Area=? AND Bin=?""",
@@ -327,8 +402,8 @@ def import_pallets_from_rows(rows: list[dict], user: str) -> dict:
             assigned += 1
         c.commit()
     log(user, "IMPORT_PALLETS",
-        f"שויכו: {assigned} | לא נמצאו: {len(not_found)}")
-    return {"assigned": assigned, "not_found": not_found}
+        f"נוצרו: {created} | שויכו: {assigned} | הוסרו ישנים: {cleared} | לא נמצאו: {len(not_found)}")
+    return {"assigned": assigned, "created": created, "cleared": cleared, "not_found": not_found}
 
 
 def detach_item_from_pallet(inv_id: int, user: str):
@@ -338,7 +413,7 @@ def detach_item_from_pallet(inv_id: int, user: str):
     log(user, "DETACH_FROM_PALLET", f"InventoryID={inv_id}")
 
 
-def assign_items_to_pallet(inv_ids: list, pallet_id: int, user: str):
+def assign_items_to_pallet(inv_ids: list, pallet_id: str, user: str):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
         for inv_id in inv_ids:
@@ -359,7 +434,7 @@ def assign_items_to_pallet(inv_ids: list, pallet_id: int, user: str):
     log(user, "ASSIGN_PALLET", f"PalletID={pallet_id} items={inv_ids}")
 
 
-def get_pallet_items(pallet_id: int):
+def get_pallet_items(pallet_id: str):
     with get_conn() as c:
         return c.execute(
             """SELECT i.*, pa.IsInStock, pa.AssignDate

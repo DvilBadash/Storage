@@ -93,10 +93,7 @@ def load_old_warehouse_xlsx(path: str) -> list[dict]:
             d["Qty"] = float(d["Qty"]) if d["Qty"] else 0.0
         except ValueError:
             d["Qty"] = 0.0
-        try:
-            d["PalletID"] = int(float(d["PalletID"])) if d["PalletID"] else None
-        except ValueError:
-            d["PalletID"] = None
+        d["PalletID"] = d["PalletID"].strip() or None
         d["IsInStock"] = 1 if str(d.get("IsInStock", "")).strip() in ("1", "כן", "true", "True") else 0
         result.append(d)
     wb.close()
@@ -118,11 +115,7 @@ def load_new_warehouse_xlsx(path: str) -> list[dict]:
         if all(v is None for v in row):
             continue
         d = {header[i]: (str(row[i]).strip() if row[i] is not None else "") for i in range(len(header))}
-        pid_raw = d.get("PalletID", "")
-        try:
-            pid = int(float(pid_raw)) if pid_raw else None
-        except ValueError:
-            pid = None
+        pid = pid_raw.strip() if (pid_raw := d.get("PalletID", "")) else None
         if pid and pid not in seen_pallets:
             seen_pallets.add(pid)
             result.append({
@@ -178,3 +171,11 @@ def archive_path(archive_dir: str, prefix: str) -> str:
     os.makedirs(archive_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return os.path.join(archive_dir, f"{prefix}_{ts}.xlsx")
+
+
+def merge_archive_path(archive_dir: str) -> str:
+    """Create archive_dir/Merge_YYYYMMDD_HHMMSS/ and return path to FinalOutput.xlsx inside it."""
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    folder = os.path.join(archive_dir, f"Merge_{ts}")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, "FinalOutput.xlsx")

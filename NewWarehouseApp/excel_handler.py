@@ -205,6 +205,19 @@ def load_pallet_codes_xlsx(path: str) -> list[str]:
     return codes
 
 
+def create_pallet_codes_sample(path: str):
+    """Create a sample single-column Pallets.xlsx for pallet code import."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Pallets"
+    _style_header(ws, ["Pallet"])
+    for i, val in enumerate(["P-001", "P-002", "P-003", "P-004", "P-005"], 2):
+        cell = ws.cell(row=i, column=1, value=val)
+        cell.border = THIN_BORDER
+    _auto_width(ws)
+    wb.save(path)
+
+
 def archive_path(archive_dir: str, prefix: str) -> str:
     os.makedirs(archive_dir, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

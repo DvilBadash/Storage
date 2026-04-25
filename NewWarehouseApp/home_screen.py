@@ -23,13 +23,11 @@ class StepCard(QFrame):
         num_lbl.setObjectName("step_num")
         num_lbl.setFixedSize(40, 40)
         num_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        num_lbl.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
 
         text_lay = QVBoxLayout()
         text_lay.setSpacing(4)
         t_lbl = QLabel(title)
         t_lbl.setObjectName("card_title")
-        t_lbl.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
         s_lbl = QLabel(subtitle)
         s_lbl.setObjectName("card_sub")
         text_lay.addWidget(t_lbl)
@@ -37,7 +35,7 @@ class StepCard(QFrame):
 
         if icon:
             icon_lbl = QLabel(icon)
-            icon_lbl.setFont(QFont("Segoe UI Emoji", 28))
+            _f = QFont("Segoe UI Emoji"); _f.setPixelSize(37); icon_lbl.setFont(_f)
             icon_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             icon_lbl.setFixedWidth(50)
             lay.addWidget(icon_lbl)
@@ -68,7 +66,6 @@ class HomeScreen(QWidget):
         title = QLabel("תפריט ראשי: ביצוע העברה")
         title.setObjectName("title_label")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setFont(QFont("Segoe UI", 20, QFont.Weight.Bold))
         lay.addWidget(title)
 
         sep = QFrame(); sep.setObjectName("separator"); sep.setFixedHeight(1)

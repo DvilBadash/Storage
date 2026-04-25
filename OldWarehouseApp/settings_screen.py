@@ -168,7 +168,7 @@ class SettingsScreen(QWidget):
         col_fields = {}   # col_index → QLineEdit
         col_checks = {}   # col_index → QCheckBox
 
-        for i in range(1, 15):
+        for i in range(1, 10):
             key     = f"inv_col_{i}"
             default = DEFAULT_COL_HEADERS.get(key, "")
             current = db.get_setting(key, default)
@@ -264,9 +264,22 @@ class SettingsScreen(QWidget):
         self.txt_log_from   = QLineEdit(); self.txt_log_from.setPlaceholderText("מתאריך YYYY-MM-DD")
         self.txt_log_to     = QLineEdit(); self.txt_log_to.setPlaceholderText("עד תאריך")
         self.cmb_log_action = QComboBox()
-        self.cmb_log_action.addItems(["-- סוג פעולה --", "LOGIN", "LOAD_INVENTORY_XLSX",
-                                      "ASSIGN_PALLET", "CREATE_PALLET", "UPDATE_ISINSTOCK",
-                                      "EXPORT_INVENTORY", "EXPORT_PALLETS"])
+        self.cmb_log_action.addItems([
+            "-- סוג פעולה --",
+            "LOGIN",
+            "LOAD_INVENTORY_XLSX",
+            "EXPORT_INVENTORY",
+            "IMPORT_PALLETS",
+            "ASSIGN_PALLET",
+            "DETACH_FROM_PALLET",
+            "CREATE_PALLET",
+            "UPDATE_ISINSTOCK",
+            "SAVE_SETTINGS",
+            "SAVE_COLUMN_HEADERS",
+            "ADD_USER",
+            "ACTIVATE_USER",
+            "DEACTIVATE_USER",
+        ])
         btn_filter = QPushButton("סנן")
         btn_filter.clicked.connect(self._filter_logs)
 
@@ -368,10 +381,19 @@ class SettingsScreen(QWidget):
         if not rows:
             QMessageBox.warning(self, "אזהרה", "הקובץ ריק או שאין שורות תקינות")
             return
-        result   = db.import_pallets_from_rows(rows, self.username)
-        assigned = result["assigned"]
+        result    = db.import_pallets_from_rows(rows, self.username)
+        assigned  = result["assigned"]
+        created   = result["created"]
+        cleared   = result["cleared"]
         not_found = result["not_found"]
-        msg = f"שויכו {assigned} פריטים למשטחים מתוך {len(rows)} שורות."
+        if created and not assigned:
+            msg = f"נוצרו {created} משטחים בהצלחה (ללא שיוך פריטים)."
+            if cleared:
+                msg += f"\nהוסרו {cleared} משטחים ישנים ללא שיוך."
+        else:
+            msg = f"שויכו {assigned} פריטים למשטחים מתוך {len(rows)} שורות."
+            if created:
+                msg += f"\nנוסף לכך נוצרו {created} משטחים חדשים ללא שיוך."
         if not_found:
             sample = "\n".join(not_found[:6])
             if len(not_found) > 6:
@@ -417,7 +439,8 @@ class SettingsScreen(QWidget):
             QMessageBox.warning(self, "שגיאה", str(e))
 
     def _toggle_user(self, uid: int, currently_active: bool):
-        db.set_user_active(uid, not currently_active)
+        new_state = not currently_active
+        db.set_user_active(uid, new_state, self.username)
         self._reload_users_table()
 
     # ── Log helpers ───────────────────────────────────────────────────────────

@@ -138,26 +138,56 @@ def export_pallet_xlsx(pallet_rows: list, path: str):
 
 
 def load_pallet_import_xlsx(path: str) -> list[dict]:
-    """Read a pallet-import Excel produced by OldWarehouseApp."""
+    """Read a pallet import Excel.
+
+    Accepts two formats:
+    - Single-column with header "Pallet" or "PalletID" (simple pallet code list)
+    - Multi-column export from OldWarehouseApp (PalletID + PN + Batch + ...)
+    """
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     ws = wb.active
     rows = list(ws.iter_rows(values_only=True))
     if not rows:
+        wb.close()
         return []
-    header = [str(h).strip() if h else "" for h in rows[0]]
+    # Normalise "Pallet" header → "PalletID" so both formats share the same key
+    header = [
+        "PalletID" if (str(h).strip() if h else "") in ("Pallet", "PalletID")
+        else (str(h).strip() if h else "")
+        for h in rows[0]
+    ]
     result = []
     for row in rows[1:]:
         if all(v is None for v in row):
             continue
         d = {header[i]: (str(row[i]).strip() if row[i] is not None else "")
              for i in range(len(header)) if i < len(header)}
-        try:
-            int(float(d.get("PalletID", "")))
-        except (ValueError, TypeError):
+        if not d.get("PalletID", "").strip():
             continue
         result.append(d)
     wb.close()
     return result
+
+
+def create_pallet_import_sample(path: str):
+    """Create a sample pallet-import Excel showing the expected column layout."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Pallets"
+    headers = ["PalletID", "CreateDate", "CreateUser", "Status",
+               "PN", "Batch", "WBS", "Storage", "Area", "Bin",
+               "UnitOfMeasure", "MultiLocation", "Qty", "IsInStock"]
+    _style_header(ws, headers)
+    sample_rows = [
+        ["P-001", "", "", "הוקם", "MATERIAL-001", "BATCH-A", "WBS-001", "STORAGE-A", "AREA-1", "BIN-001", "יח", "לא", 10.0, "כן"],
+        ["P-002", "", "", "הוקם", "MATERIAL-002", "BATCH-B", "WBS-002", "STORAGE-B", "AREA-2", "BIN-002", "יח", "לא",  5.0, "לא"],
+    ]
+    for r_idx, vals in enumerate(sample_rows, 2):
+        for c_idx, val in enumerate(vals, 1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=val)
+            cell.border = THIN_BORDER
+    _auto_width(ws)
+    wb.save(path)
 
 
 def archive_path(archive_dir: str, prefix: str) -> str:

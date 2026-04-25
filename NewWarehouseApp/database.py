@@ -299,6 +299,14 @@ def get_dest_areas():
     return [r[0] for r in rows]
 
 
+def get_all_dest_bins():
+    """Return all locations from LocationNew ordered by area and bin."""
+    with get_conn() as c:
+        return c.execute(
+            "SELECT DestArea, Dest_BIN, Environment FROM LocationNew ORDER BY DestArea, Dest_BIN"
+        ).fetchall()
+
+
 def get_bins_for_area(area: str):
     with get_conn() as c:
         rows = c.execute(
@@ -353,22 +361,17 @@ def get_pallet_items(pallet_id: str):
         ).fetchall()
 
 
-def assign_pallet_to_bin(pallet_id: str, target_bin: str, user: str):
-    pallet = get_pallet(pallet_id)
-    if not pallet:
+def assign_pallet_to_bin(pallet_id: str, target_bin: str, status: str, user: str):
+    if not get_pallet(pallet_id):
         raise ValueError(f"משטח {pallet_id} לא נמצא")
-    if pallet["TargetBin"] and pallet["TargetBin"] != target_bin:
-        raise ValueError(
-            f"משטח {pallet_id} כבר שויך לאיתור {pallet['TargetBin']}. לא ניתן לשייך פעמיים."
-        )
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
         c.execute(
-            "UPDATE Pallets SET TargetBin=?, Status='ממוקם', AssignDate=? WHERE PalletID=?",
-            (target_bin, now, pallet_id),
+            "UPDATE Pallets SET TargetBin=?, Status=?, AssignDate=? WHERE PalletID=?",
+            (target_bin, status, now, pallet_id),
         )
         c.commit()
-    log(user, "ASSIGN_PALLET_BIN", f"PalletID={pallet_id} TargetBin={target_bin}")
+    log(user, "ASSIGN_PALLET_BIN", f"PalletID={pallet_id} TargetBin={target_bin} Status={status}")
 
 
 def update_pallet_status(pallet_id: str, status: str, user: str):
@@ -379,9 +382,11 @@ def update_pallet_status(pallet_id: str, status: str, user: str):
 
 
 def import_pallets_from_rows(rows: list[dict], user: str):
-    """Import pallet rows from FinalOutput.xlsx or a pallet export file."""
+    """Import pallet rows from FinalOutput.xlsx or a pallet export file. Clears existing data first."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
+        c.execute("DELETE FROM PalletItems")
+        c.execute("DELETE FROM Pallets")
         for r in rows:
             pid = _normalize_pid(r.get("PalletID") or r.get("Pallet"))
             if pid is None:
@@ -426,9 +431,11 @@ def import_pallets_from_rows(rows: list[dict], user: str):
 
 
 def bulk_insert_pallet_codes(codes: list[str], user: str = "מערכת"):
-    """Pre-populate the Pallets table with pallet IDs from Pallets.xlsx (no items)."""
+    """Pre-populate the Pallets table with pallet IDs from Pallets.xlsx (no items). Clears existing data first."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with get_conn() as c:
+        c.execute("DELETE FROM PalletItems")
+        c.execute("DELETE FROM Pallets")
         for code in codes:
             pid = _normalize_pid(code)
             if pid:

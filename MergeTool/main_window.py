@@ -1,4 +1,5 @@
 import os
+import shutil
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -312,24 +313,33 @@ class MainWindow(QMainWindow):
             # Run merge
             count = db.run_merge(self.username)
 
-            # Auto-export
-            archive_dir = db.get_setting("archive_path")
-            export_dir  = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
+            # Auto-export to output path
+            archive_dir  = db.get_setting("archive_path")
+            export_dir   = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
             unified_rows = db.get_unified_inventory()
-            arc_path = xh.archive_path(export_dir, "UnifiedInventory")
+            arc_path     = xh.archive_path(export_dir, "FinalOutput")
             xh.export_unified_xlsx(unified_rows, arc_path)
             db.log(self.username, "EXPORT_UNIFIED", f"{arc_path}")
+
+            # Archive copy under archive_dir/Merge_TIMESTAMP/
+            merge_arc = None
+            if archive_dir:
+                merge_arc = xh.merge_archive_path(archive_dir)
+                shutil.copy2(arc_path, merge_arc)
+                db.log(self.username, "ARCHIVE_MERGE", f"ארכיון: {merge_arc}")
 
             self.progress.setVisible(False)
             self.lbl_merge_result.setText(f"✔  האיחוד הושלם! {count} שורות בקובץ המאוחד")
             self.lbl_last.setText(f"איחוד אחרון: {db.get_setting('last_merge_date')}")
 
-            QMessageBox.information(
-                self, "איחוד הושלם",
+            msg = (
                 f"האיחוד הושלם בהצלחה!\n\n"
                 f"שורות מאוחדות: {count}\n"
                 f"קובץ יצוא:\n{arc_path}"
             )
+            if merge_arc:
+                msg += f"\n\nארכיון:\n{merge_arc}"
+            QMessageBox.information(self, "איחוד הושלם", msg)
             self._load_results()
 
         except Exception as e:

@@ -1,10 +1,9 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFrame, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QMessageBox, QGroupBox,
+    QComboBox, QFrame, QCheckBox, QMessageBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 import database as db
 
 
@@ -12,234 +11,210 @@ class PalletAssignmentScreen(QWidget):
     def __init__(self, username: str):
         super().__init__()
         self.username = username
+        self._blocking = False
         self._build_ui()
-        self._reload_pallets()
+        self.detail_frame.hide()
+        self.btn_assign.setEnabled(False)
+        self.refresh()
 
     def _build_ui(self):
         root = QVBoxLayout(self)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(20, 16, 20, 16)
+        root.setSpacing(14)
 
-        # Title
-        title = QLabel("שלב 2: שיוך משטח לאיתור יעד")
-        title.setObjectName("section_title")
-        title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        root.addWidget(title)
+        # ── Title ─────────────────────────────────────────────────────────────
+        self.lbl_title = QLabel("שלב 2: שיוך משטח לאיתור יעד")
+        self.lbl_title.setObjectName("section_title")
+        root.addWidget(self.lbl_title)
 
-        # Top row: pallet selection
-        top = QGroupBox("בחירת משטח")
-        top_lay = QHBoxLayout(top)
-        top_lay.setSpacing(12)
+        # ── Selector row: pallet + location side-by-side ──────────────────────
+        sel_row = QHBoxLayout()
+        sel_row.setSpacing(12)
 
-        lbl1 = QLabel("בחר מס' משטח:")
-        lbl1.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        loc_frame = QFrame()
+        loc_frame.setObjectName("card")
+        loc_lay = QVBoxLayout(loc_frame)
+        loc_lay.setContentsMargins(14, 12, 14, 12)
+        loc_lay.setSpacing(8)
+        lbl_loc = QLabel("📍  בחר איתור יעד")
+        _f = QFont("Segoe UI"); _f.setPixelSize(16); _f.setBold(True); lbl_loc.setFont(_f)
+        self.cmb_dest = QComboBox()
+        self.cmb_dest.setMinimumHeight(44)
+        loc_lay.addWidget(lbl_loc)
+        loc_lay.addWidget(self.cmb_dest)
 
+        pal_frame = QFrame()
+        pal_frame.setObjectName("card")
+        pal_lay = QVBoxLayout(pal_frame)
+        pal_lay.setContentsMargins(14, 12, 14, 12)
+        pal_lay.setSpacing(8)
+        lbl_pal = QLabel("🚚  בחר מס' משטח")
+        _f = QFont("Segoe UI"); _f.setPixelSize(16); _f.setBold(True); lbl_pal.setFont(_f)
         self.cmb_pallet = QComboBox()
-        self.cmb_pallet.setMinimumWidth(220)
+        self.cmb_pallet.setMinimumHeight(44)
         self.cmb_pallet.setEditable(True)
         self.cmb_pallet.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.cmb_pallet.currentIndexChanged.connect(self._on_pallet_changed)
+        pal_lay.addWidget(lbl_pal)
+        pal_lay.addWidget(self.cmb_pallet)
 
-        top_lay.addStretch()
-        top_lay.addWidget(self.cmb_pallet)
-        top_lay.addWidget(lbl1)
-        root.addWidget(top)
+        sel_row.addWidget(loc_frame)
+        sel_row.addWidget(pal_frame)
+        root.addLayout(sel_row)
 
-        # Pallet detail card
+        # ── Detail card ───────────────────────────────────────────────────────
         self.detail_frame = QFrame()
         self.detail_frame.setObjectName("card")
         det_lay = QVBoxLayout(self.detail_frame)
-        det_lay.setContentsMargins(16, 14, 16, 14)
-        det_lay.setSpacing(10)
+        det_lay.setContentsMargins(18, 14, 18, 14)
+        det_lay.setSpacing(12)
 
-        det_title = QLabel("פרטי משטח")
-        det_title.setObjectName("section_title")
-        det_title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        det_lay.addWidget(det_title)
+        self.lbl_pal_title = QLabel("פרטי משטח")
+        _f = QFont("Segoe UI"); _f.setPixelSize(19); _f.setBold(True); self.lbl_pal_title.setFont(_f)
+        det_lay.addWidget(self.lbl_pal_title)
 
-        info_lay = QHBoxLayout()
-        info_lay.setSpacing(30)
-        self.lbl_create  = QLabel("תאריך הקמה: –")
-        self.lbl_status  = QLabel("סטטוס: –")
-        self.lbl_target  = QLabel("איתור נוכחי: –")
-        for lbl in [self.lbl_create, self.lbl_status, self.lbl_target]:
-            lbl.setFont(QFont("Segoe UI", 12))
-        info_lay.addStretch()
-        info_lay.addWidget(self.lbl_target)
-        info_lay.addWidget(self.lbl_status)
-        info_lay.addWidget(self.lbl_create)
-        det_lay.addLayout(info_lay)
+        status_row = QHBoxLayout()
+        lbl_pencil = QLabel("✏")
+        _f = QFont("Segoe UI"); _f.setPixelSize(19); lbl_pencil.setFont(_f)
+        self.lbl_status_current = QLabel("סטטוס נוכחי: –")
+        _f = QFont("Segoe UI"); _f.setPixelSize(19); _f.setBold(True); self.lbl_status_current.setFont(_f)
+        status_row.addStretch()
+        status_row.addWidget(lbl_pencil)
+        status_row.addWidget(self.lbl_status_current)
+        det_lay.addLayout(status_row)
 
-        # Status legend
-        self.lbl_status_legend = QLabel("")
-        self.lbl_status_legend.setObjectName("warn_label")
-        det_lay.addWidget(self.lbl_status_legend)
-
-        # Status checkboxes (display only)
-        ck_lay = QHBoxLayout()
-        ck_lay.setSpacing(20)
-        self.lbl_in_stock  = QLabel("☐ ממוקם (נמצא במחסן היעד)")
-        self.lbl_set_up    = QLabel("☐ הוקם")
-        self.lbl_departed  = QLabel("☐ יצא (באמצע שליחה)")
-        for lbl in [self.lbl_in_stock, self.lbl_set_up, self.lbl_departed]:
-            lbl.setFont(QFont("Segoe UI", 12))
-        ck_lay.addStretch()
-        ck_lay.addWidget(self.lbl_departed)
-        ck_lay.addWidget(self.lbl_set_up)
-        ck_lay.addWidget(self.lbl_in_stock)
-        det_lay.addLayout(ck_lay)
-
-        # Items table (11 columns matching STOCK.xlsx fields)
-        self.tbl_items = QTableWidget(0, 11)
-        self.tbl_items.setHorizontalHeaderLabels(db.get_item_headers())
-        hh = self.tbl_items.horizontalHeader()
-        hh.setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)   # מק"ט
-        hh.setSectionResizeMode(7, QHeaderView.ResizeMode.Stretch)   # Bin
-        hh.setMaximumSectionSize(180)
-        self.tbl_items.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.tbl_items.setAlternatingRowColors(True)
-        self.tbl_items.setMaximumHeight(210)
-        self._apply_item_col_visibility()
-        det_lay.addWidget(self.tbl_items)
+        # Status checkboxes (radio-like: only one selected at a time)
+        self.chk_placed = QCheckBox("ממוקם (נמצא במחסן היעד)")
+        self.chk_setup  = QCheckBox("הוקם")
+        self.chk_sent   = QCheckBox("יצא (באמצעות משלוח)")
+        for chk in [self.chk_placed, self.chk_setup, self.chk_sent]:
+            chk.setMinimumHeight(38)
+            det_lay.addWidget(chk)
+        self.chk_placed.toggled.connect(lambda v: self._radio_check("ממוקם", v))
+        self.chk_setup.toggled.connect(lambda v:  self._radio_check("הוקם",  v))
+        self.chk_sent.toggled.connect(lambda v:   self._radio_check("יצא",   v))
 
         root.addWidget(self.detail_frame)
 
-        # Target bin assignment
-        bin_grp = QGroupBox("שיוך לאיתור יעד")
-        bin_lay = QHBoxLayout(bin_grp)
-        bin_lay.setSpacing(12)
+        # ── Assign button ─────────────────────────────────────────────────────
+        self.btn_assign = QPushButton("בצע שיוך ועדכן סטטוס")
+        self.btn_assign.setMinimumHeight(54)
+        self.btn_assign.clicked.connect(self._do_assign)
+        root.addWidget(self.btn_assign)
 
-        lbl_area = QLabel("אזור יעד:")
-        lbl_area.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        self.cmb_dest_area = QComboBox()
-        self.cmb_dest_area.setMinimumWidth(160)
-        self.cmb_dest_area.currentIndexChanged.connect(self._on_area_changed)
+        # ── Legend ────────────────────────────────────────────────────────────
+        leg_frame = QFrame()
+        leg_frame.setObjectName("card")
+        leg_lay = QVBoxLayout(leg_frame)
+        leg_lay.setContentsMargins(16, 12, 16, 12)
+        leg_lay.setSpacing(4)
 
-        lbl_bin = QLabel("איתור יעד:")
-        lbl_bin.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
-        self.cmb_dest_bin = QComboBox()
-        self.cmb_dest_bin.setMinimumWidth(160)
+        lbl_leg_hdr = QLabel("** מקרא סטטוסים **")
+        _f = QFont("Segoe UI"); _f.setPixelSize(16); _f.setBold(True); lbl_leg_hdr.setFont(_f)
+        lbl_leg_hdr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        leg_lay.addWidget(lbl_leg_hdr)
+        for txt in [
+            "ממוקם = המשטח נמצא במחסן היעד.",
+            "הוקם = המשטח הוקם והוא מוכן להעברה.",
+            "יצא = המשטח יצא מהמחסן ונמצא באמצע שליחה.",
+        ]:
+            lbl = QLabel(txt)
+            _f = QFont("Segoe UI"); _f.setPixelSize(15); lbl.setFont(_f)
+            leg_lay.addWidget(lbl)
 
-        btn_assign = QPushButton("בצע שיוך ועדכן סטטוס ✓")
-        btn_assign.setMinimumHeight(52)
-        btn_assign.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
-        btn_assign.clicked.connect(self._do_assign)
+        root.addWidget(leg_frame)
+        root.addStretch()
 
-        bin_lay.addWidget(btn_assign)
-        bin_lay.addWidget(self.cmb_dest_bin)
-        bin_lay.addWidget(lbl_bin)
-        bin_lay.addWidget(self.cmb_dest_area)
-        bin_lay.addWidget(lbl_area)
-        bin_lay.addStretch()
-        root.addWidget(bin_grp)
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
-        # Legend
-        leg = QLabel(
-            "** מקרא סטטוסים **\n"
-            "ממוקם = המשטח נמצא במחסן היעד  |  הוקם = המשטח הוקם וממתין להעברה  |  יצא = המשטח יצא מהמחסן ונמצא בדרכו"
-        )
-        leg.setObjectName("status_label")
-        leg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.addWidget(leg)
+    def _radio_check(self, status: str, checked: bool):
+        """Ensure only one status checkbox is active at a time."""
+        if self._blocking or not checked:
+            return
+        self._blocking = True
+        self.chk_placed.setChecked(status == "ממוקם")
+        self.chk_setup.setChecked(status  == "הוקם")
+        self.chk_sent.setChecked(status   == "יצא")
+        self.lbl_status_current.setText(f"סטטוס נוכחי: {status}")
+        self._blocking = False
 
-        self._load_areas()
-
-    # ── Helpers ──────────────────────────────────────────────────────────────
+    def _selected_status(self) -> str:
+        if self.chk_placed.isChecked(): return "ממוקם"
+        if self.chk_sent.isChecked():   return "יצא"
+        return "הוקם"
 
     def _reload_pallets(self):
         self.cmb_pallet.blockSignals(True)
         self.cmb_pallet.clear()
         self.cmb_pallet.addItem("-- בחר משטח --", None)
         for p in db.get_pallets():
-            status_icon = {"ממוקם": "✔", "יצא": "→", "הוקם": "●"}.get(p["Status"], "")
-            self.cmb_pallet.addItem(f"{status_icon} {p['PalletID']}  [{p['Status']}]", p["PalletID"])
+            icon = {"ממוקם": "✔", "יצא": "→", "הוקם": "●"}.get(p["Status"], "")
+            self.cmb_pallet.addItem(f"{icon}  {p['PalletID']}", p["PalletID"])
         self.cmb_pallet.blockSignals(False)
 
-    def _load_areas(self):
-        self.cmb_dest_area.blockSignals(True)
-        self.cmb_dest_area.clear()
-        self.cmb_dest_area.addItem("-- אזור יעד --", None)
-        for area in db.get_dest_areas():
-            self.cmb_dest_area.addItem(area, area)
-        self.cmb_dest_area.blockSignals(False)
-
-    def _on_area_changed(self):
-        area = self.cmb_dest_area.currentData()
-        self.cmb_dest_bin.clear()
-        self.cmb_dest_bin.addItem("-- Bin יעד --", None)
-        if area:
-            for b in db.get_bins_for_area(area):
-                self.cmb_dest_bin.addItem(b, b)
+    def _reload_locations(self):
+        self.cmb_dest.clear()
+        self.cmb_dest.addItem("-- בחר איתור יעד --", None)
+        for loc in db.get_all_dest_bins():
+            self.cmb_dest.addItem(loc["Dest_BIN"], loc["Dest_BIN"])
 
     def _on_pallet_changed(self):
         pallet_id = self.cmb_pallet.currentData()
-        if pallet_id is None:
-            self._clear_detail()
+        if not pallet_id:
+            self.detail_frame.hide()
+            self.btn_assign.setEnabled(False)
+            self.lbl_title.setText("שלב 2: שיוך משטח לאיתור יעד")
             return
         pallet = db.get_pallet(pallet_id)
         if not pallet:
-            self._clear_detail()
             return
 
-        self.lbl_create.setText(f"תאריך הקמה: {pallet['CreateDate'] or '–'}")
-        self.lbl_status.setText(f"סטטוס: {pallet['Status'] or '–'}")
-        self.lbl_target.setText(f"איתור נוכחי: {pallet['TargetBin'] or '–'}")
+        self.detail_frame.show()
+        self.btn_assign.setEnabled(True)
+        self.lbl_title.setText(f"שלב 2: שיוך משטח לאיתור יעד ({pallet_id})")
+        self.lbl_pal_title.setText(f"פרטי משטח {pallet_id}")
 
-        status = pallet["Status"]
-        self.lbl_in_stock.setText(f"{'☑' if status=='ממוקם' else '☐'} ממוקם (נמצא במחסן היעד)")
-        self.lbl_set_up.setText(f"{'☑' if status=='הוקם'  else '☐'} הוקם")
-        self.lbl_departed.setText(f"{'☑' if status=='יצא'   else '☐'} יצא (באמצע שליחה)")
-        self.lbl_status_legend.setText(f"** סטטוס נוכחי: {status} **")
+        # Pre-select current target bin
+        target = pallet["TargetBin"] or ""
+        idx = self.cmb_dest.findData(target)
+        if idx < 0 and "/" in target:
+            idx = self.cmb_dest.findData(target.split("/")[-1])
+        if idx >= 0:
+            self.cmb_dest.setCurrentIndex(idx)
+        else:
+            self.cmb_dest.setCurrentIndex(0)
 
-        items = db.get_pallet_items(pallet_id)
-        self.tbl_items.setRowCount(len(items))
-        ITEM_KEYS = ["Pn", "Material", "UnitOfMeasure", "Batch", "WBS",
-                     "Storage", "StorageType", "Bin", "Qty",
-                     "DedicatedStrategy", "MultiLocation"]
-        for r, item in enumerate(items):
-            for c, key in enumerate(ITEM_KEYS):
-                val = item[key] if key in item.keys() else ""
-                it  = QTableWidgetItem(str(val or ""))
-                it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.tbl_items.setItem(r, c, it)
-            self.tbl_items.setRowHeight(r, 44)
-
-    def _clear_detail(self):
-        self.lbl_create.setText("תאריך הקמה: –")
-        self.lbl_status.setText("סטטוס: –")
-        self.lbl_target.setText("איתור נוכחי: –")
-        self.lbl_status_legend.setText("")
-        self.tbl_items.setRowCount(0)
-        for lbl in [self.lbl_in_stock, self.lbl_set_up, self.lbl_departed]:
-            lbl.setText(lbl.text().replace("☑", "☐"))
+        # Reflect current status in checkboxes
+        status = pallet["Status"] or "הוקם"
+        self.lbl_status_current.setText(f"סטטוס נוכחי: {status}")
+        self._blocking = True
+        self.chk_placed.setChecked(status == "ממוקם")
+        self.chk_setup.setChecked(status  == "הוקם")
+        self.chk_sent.setChecked(status   == "יצא")
+        self._blocking = False
 
     def _do_assign(self):
         pallet_id = self.cmb_pallet.currentData()
-        area      = self.cmb_dest_area.currentData()
-        bin_val   = self.cmb_dest_bin.currentData()
-
+        target    = self.cmb_dest.currentData()
+        status    = self._selected_status()
         if not pallet_id:
             QMessageBox.warning(self, "שגיאה", "יש לבחור משטח")
             return
-        if not area or not bin_val:
-            QMessageBox.warning(self, "שגיאה", "יש לבחור אזור יעד ו-Bin יעד")
+        if not target:
+            QMessageBox.warning(self, "שגיאה", "יש לבחור איתור יעד")
             return
-
-        target_bin = f"{area}/{bin_val}"
         try:
-            db.assign_pallet_to_bin(pallet_id, target_bin, self.username)
+            db.assign_pallet_to_bin(pallet_id, target, status, self.username)
             self._on_pallet_changed()
             self._reload_pallets()
-            QMessageBox.information(self, "הצלחה", f"משטח {pallet_id} שויך לאיתור {target_bin} ✓")
+            QMessageBox.information(
+                self, "הצלחה",
+                f"משטח {pallet_id}\nאיתור: {target}\nסטטוס: {status} ✓"
+            )
         except ValueError as e:
             QMessageBox.critical(self, "שגיאת שיוך", str(e))
 
-    def _apply_item_col_visibility(self):
-        for i in range(11):
-            self.tbl_items.setColumnHidden(i, db.get_col_hidden(f"item_col_{i}"))
-
     def refresh(self):
         self._reload_pallets()
-        self._load_areas()
-        self._apply_item_col_visibility()
+        self._reload_locations()
+        self._on_pallet_changed()

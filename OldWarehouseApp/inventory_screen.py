@@ -1,111 +1,41 @@
-from collections import Counter
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
-    QCheckBox, QFrame, QMessageBox, QDialog, QSpinBox,
-    QHeaderView, QAbstractItemView,
+    QFrame, QHeaderView, QAbstractItemView, QCompleter, QMessageBox, QCheckBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QRect
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QTimer
 from PyQt6.QtGui import QFont, QColor, QBrush, QPainter, QPainterPath
+from collections import Counter
 import database as db
 
 MAX_ROWS = 500
 
-# ── Column indices ────────────────────────────────────────────────────────────
-COL_CB    = 0   # בחירה
-COL_PN    = 1   # מק"ט
-COL_CAT   = 2   # חומר
-COL_UOM   = 3   # יחידת מידה
-COL_BATCH = 4   # סדרה
-COL_WBS   = 5   # WBS
-COL_STO   = 6   # אתר אחסון
-COL_AREA  = 7   # סוג איחסון
-COL_BIN   = 8   # איתור איחסון
-COL_DEST  = 9   # אסטרטגיה ייעודית
-COL_QTY   = 10  # מלאי זמין
-COL_MULTI = 11  # האם > איתור אחד
-COL_STOCK = 12  # קיים פיזית – native toggle
-COL_DUP   = 13  # ⚠ duplicate PN+Storage
-COL_PAL   = 14  # ⚑ assigned pallet
-NUM_COLS  = 15
+# ── Column indices (RTL: col 0 = rightmost on screen) ────────────────────────
+COL_CHK   = 0   # ✓ בחירה
+COL_PN    = 1   # PN / מספר חלק
+COL_CAT   = 2   # מס' קטלוגי (חומר)
+COL_BIN   = 3   # איתור (Bin)
+COL_STO   = 4   # אתר איחסון (Storage)
+COL_AREA  = 5   # סוג איחסון (Area)
+COL_DEST  = 6   # אזור יעד (DestArea)
+COL_STOCK = 7   # ממוקם – toggle switch
+COL_PAL   = 8   # משטח משויך
+COL_IND   = 9   # חיווי – ❗ indicator
+NUM_COLS  = 10
 
-COLOR_DUP   = QColor("#E65100")
-COLOR_PAL   = QColor("#1565C0")
-BG_ASSIGNED = QColor("#E8F5E9")
+COLOR_IND = QColor("#D32F2F")
 
-
-# ── Pallet detail popup ───────────────────────────────────────────────────────
-
-class PalletDetailPopup(QDialog):
-    def __init__(self, pallet_id: int, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(f"משטח P-{pallet_id}")
-        self.setMinimumSize(580, 440)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        lay = QVBoxLayout(self)
-        lay.setSpacing(10)
-
-        hdr = QLabel(f"🗂  משטח מספר: P-{pallet_id}")
-        hdr.setFont(QFont("Segoe UI", 15, QFont.Weight.Bold))
-        lay.addWidget(hdr)
-
-        tbl = QTableWidget()
-        tbl.setColumnCount(5)
-        tbl.setHorizontalHeaderLabels(["PN", "אצווה", "WBS", "איתור", "קיים פיזית"])
-        tbl.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        tbl.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        tbl.setAlternatingRowColors(True)
-        tbl.verticalHeader().setVisible(False)
-
-        rows = db.get_pallet_items(pallet_id)
-        tbl.setRowCount(len(rows))
-        for r, row in enumerate(rows):
-            tbl.setItem(r, 0, QTableWidgetItem(row["Pn"] or ""))
-            tbl.setItem(r, 1, QTableWidgetItem(row["Batch"] or ""))
-            tbl.setItem(r, 2, QTableWidgetItem(row["WBS"] or ""))
-            tbl.setItem(r, 3, QTableWidgetItem(
-                f"{row['Storage']}/{row['Area']}/{row['Bin']}"))
-            val = "✔ כן" if row["IsInStock"] else "✗ לא"
-            item = QTableWidgetItem(val)
-            item.setForeground(QColor("#1B5E20") if row["IsInStock"] else QColor("#B71C1C"))
-            tbl.setItem(r, 4, item)
-            tbl.setRowHeight(r, 44)
-        lay.addWidget(tbl)
-
-        btn = QPushButton("סגור")
-        btn.clicked.connect(self.accept)
-        lay.addWidget(btn)
-
-
-# ── New pallet dialog ─────────────────────────────────────────────────────────
-
-class NewPalletDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("יצירת משטח חדש")
-        self.setFixedSize(360, 230)
-        self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.pallet_id = None
-        lay = QVBoxLayout(self)
-        lay.setSpacing(16)
-        lay.addWidget(QLabel("הזן מספר משטח (1 – 99999):"))
-        self.spin = QSpinBox()
-        self.spin.setRange(1, 99999)
-        self.spin.setMinimumHeight(48)
-        lay.addWidget(self.spin)
-        row = QHBoxLayout()
-        ok = QPushButton("צור משטח")
-        ok.clicked.connect(self._on_ok)
-        cancel = QPushButton("ביטול")
-        cancel.setObjectName("btn_secondary")
-        cancel.clicked.connect(self.reject)
-        row.addWidget(cancel)
-        row.addWidget(ok)
-        lay.addLayout(row)
-
-    def _on_ok(self):
-        self.pallet_id = self.spin.value()
-        self.accept()
+# Maps column index → row dict key for sorting (widget columns excluded)
+_SORT_KEY = {
+    COL_PN:    lambda r: str(r["Pn"]      or "").lower(),
+    COL_CAT:   lambda r: str(r["Cat"]     or "").lower(),
+    COL_BIN:   lambda r: str(r["Bin"]     or "").lower(),
+    COL_STO:   lambda r: str(r["Storage"] or "").lower(),
+    COL_AREA:  lambda r: str(r["Area"]    or "").lower(),
+    COL_DEST:  lambda r: str(r["DestArea"]or "").lower(),
+    COL_STOCK: lambda r: int(r["IsInStock"] or 0),
+    COL_PAL:   lambda r: (str(r["PalletID"]) if r["PalletID"] is not None else ""),
+}
 
 
 # ── Toggle switch widget ──────────────────────────────────────────────────────
@@ -156,11 +86,8 @@ class ToggleSwitch(QWidget):
         font.setPointSize(8)
         font.setBold(True)
         p.setFont(font)
-        text = "קיים" if self._checked else "לא קיים"
-        if self._checked:
-            text_rect = QRect(2, 0, w - knob_d - 6, h)
-        else:
-            text_rect = QRect(knob_d + 6, 0, w - knob_d - 6, h)
+        text = "ממוקם" if self._checked else "לא ממוקם"
+        text_rect = QRect(2, 0, w - knob_d - 6, h) if self._checked else QRect(knob_d + 6, 0, w - knob_d - 6, h)
         p.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, text)
         p.end()
 
@@ -170,152 +97,243 @@ class ToggleSwitch(QWidget):
 class InventoryScreen(QWidget):
     def __init__(self, username: str):
         super().__init__()
-        self.username    = username
+        self.username  = username
         self._rows: list = []
-        self._cb_list: list[QCheckBox | None] = []
-        self._populating = False          # guard for itemChanged during populate
+        self._sort_col   = -1
+        self._sort_asc   = True
         self._build_ui()
-        self.table.itemClicked.connect(self._on_item_clicked)
         self._refresh_filter_combos()
-        self._search()
+        self.lbl_count.setText("טוען נתונים...")
+        QTimer.singleShot(0, self._search)   # defer so the window appears before the table is built
 
-    # ── UI ────────────────────────────────────────────────────────────────────
+    # ── Build UI ──────────────────────────────────────────────────────────────
 
     def _build_ui(self):
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
         root.setSpacing(12)
 
-        title = QLabel("שלב 1: בחירת איתור ושיוך מלאי למשטח")
-        title.setObjectName("section_title")
-        title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
-        root.addWidget(title)
+        self.lbl_title = QLabel("שלב 1: בחירת איתור להעברה")
+        self.lbl_title.setObjectName("section_title")
+        self.lbl_title.setFont(QFont("Segoe UI", 16, QFont.Weight.Bold))
+        self.lbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(self.lbl_title)
 
-        # Search bar
-        sf = QFrame(); sf.setObjectName("card")
-        s = QHBoxLayout(sf); s.setContentsMargins(16, 12, 16, 12); s.setSpacing(10)
+        # ── Filter row ────────────────────────────────────────────────────────
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(10)
+
+        def _filter_card(label_text, widget):
+            card = QFrame(); card.setObjectName("card")
+            lay  = QVBoxLayout(card)
+            lay.setContentsMargins(12, 8, 12, 8); lay.setSpacing(4)
+            lbl = QLabel(label_text)
+            lbl.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+            lay.addWidget(lbl); lay.addWidget(widget)
+            return card
+
         self.txt_pn = QLineEdit()
-        self.txt_pn.setPlaceholderText("PN – חיפוש חופשי")
-        self.txt_pn.setMinimumWidth(180)
+        self.txt_pn.setPlaceholderText("PN")
+        self.txt_pn.setMinimumHeight(36)
         self.txt_pn.returnPressed.connect(self._search)
-        self.cmb_storage = QComboBox(); self.cmb_storage.addItem("-- אחסון --")
-        self.cmb_area    = QComboBox(); self.cmb_area.addItem("-- אזור --")
-        self.cmb_bin     = QComboBox(); self.cmb_bin.addItem("-- Bin --")
-        self.chk_unassigned = QCheckBox("ללא משטח")
-        self.chk_unassigned.toggled.connect(self._search)
-        btn_search = QPushButton("חפש 🔍"); btn_search.clicked.connect(self._search)
-        btn_clear  = QPushButton("נקה");    btn_clear.setObjectName("btn_secondary")
-        btn_clear.clicked.connect(self._clear_filter)
-        for w in [btn_clear, btn_search, self.chk_unassigned, self.cmb_bin,
-                  self.cmb_area, self.cmb_storage, self.txt_pn]:
-            s.addWidget(w)
-        root.addWidget(sf)
 
-        # Table
+        self.txt_cat = QLineEdit()
+        self.txt_cat.setPlaceholderText("מס' קטלוגי")
+        self.txt_cat.setMinimumHeight(36)
+        self.txt_cat.returnPressed.connect(self._search)
+        self.txt_cat.textChanged.connect(self._search)
+
+        self.cmb_bin = QComboBox(); self.cmb_bin.setMinimumHeight(36)
+        self.cmb_bin.currentIndexChanged.connect(self._search)
+
+        self.cmb_storage = QComboBox(); self.cmb_storage.setMinimumHeight(36)
+        self.cmb_storage.currentIndexChanged.connect(self._search)
+
+        filter_row.addWidget(_filter_card("🔍  מספר חלק",   self.txt_pn))
+        filter_row.addWidget(_filter_card("🏷  מס' קטלוגי", self.txt_cat))
+        filter_row.addWidget(_filter_card("📍  איתור",       self.cmb_bin))
+        filter_row.addWidget(_filter_card("🏭  אתר איחסון", self.cmb_storage))
+
+        btn_clear = QPushButton("נקה")
+        btn_clear.setObjectName("btn_secondary")
+        btn_clear.setMinimumHeight(36)
+        btn_clear.setFixedWidth(70)
+        btn_clear.clicked.connect(self._clear_filter)
+        filter_row.addWidget(btn_clear)
+
+        self.chk_no_pallet = QCheckBox("ללא משטח")
+        self.chk_no_pallet.setFont(QFont("Segoe UI", 11))
+        self.chk_no_pallet.toggled.connect(self._search)
+        filter_row.addWidget(self.chk_no_pallet)
+
+        root.addLayout(filter_row)
+
+        tbl_title = QLabel("תוצאות חיפוש איתורים ופריטים")
+        tbl_title.setFont(QFont("Segoe UI", 13, QFont.Weight.Bold))
+        tbl_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(tbl_title)
+
+        # ── Table ─────────────────────────────────────────────────────────────
         self.table = QTableWidget(0, NUM_COLS)
-        self._apply_headers()
-        self.table.setAlternatingRowColors(False)
+        self.table.setHorizontalHeaderLabels([
+            "✓", "PN\nמספר חלק", "מס' קטלוגי", "איתור",
+            "אתר\nאיחסון", "סוג\nאיחסון", "אזור\nיעד",
+            "ממוקם", "משטח\nמשויך", "חיווי",
+        ])
+        hh = self.table.horizontalHeader()
+        hh.setSectionResizeMode(COL_CHK,   QHeaderView.ResizeMode.Fixed);          hh.resizeSection(COL_CHK,   36)
+        hh.setSectionResizeMode(COL_PN,    QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(COL_CAT,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_BIN,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_STO,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_AREA,  QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_DEST,  QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_STOCK, QHeaderView.ResizeMode.Fixed);           hh.resizeSection(COL_STOCK, 100)
+        hh.setSectionResizeMode(COL_PAL,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_IND,   QHeaderView.ResizeMode.Fixed);           hh.resizeSection(COL_IND,    52)
+        hh.setMinimumSectionSize(36)
+        hh.setSortIndicatorShown(True)
+        hh.sectionClicked.connect(self._on_header_clicked)
+
+        self.table.horizontalHeader().setDefaultSectionSize(90)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.verticalHeader().setVisible(False)
-        hh = self.table.horizontalHeader()
-        hh.setStretchLastSection(False)
-        # Fixed width for checkbox column so it's always fully visible
-        hh.setSectionResizeMode(COL_CB, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(COL_CB, 52)
-        # Stretch PN; everything else ResizeToContents
-        for i in range(1, NUM_COLS):
-            hh.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_PN,  QHeaderView.ResizeMode.Stretch)
-        hh.setSectionResizeMode(COL_CAT, QHeaderView.ResizeMode.Stretch)
+        self.table.setAlternatingRowColors(True)
+        self.table.itemChanged.connect(self._on_item_changed)
+        self.table.itemClicked.connect(self._on_item_clicked)
         root.addWidget(self.table, 1)
 
         self.lbl_count = QLabel("")
         self.lbl_count.setStyleSheet("font-size: 12px; color: #757575;")
         root.addWidget(self.lbl_count)
 
-        # Pallet action bar
-        pf = QFrame(); pf.setObjectName("card")
-        p = QHBoxLayout(pf); p.setContentsMargins(16, 12, 16, 12); p.setSpacing(10)
-        self.cmb_pallet = QComboBox(); self.cmb_pallet.setMinimumWidth(170)
-        self._reload_pallets()
-        btn_new = QPushButton("+ משטח חדש"); btn_new.setObjectName("btn_secondary")
-        btn_new.clicked.connect(self._create_pallet)
-        btn_assign = QPushButton("שייך מסומנים ✓")
-        btn_assign.clicked.connect(self._assign_selected)
-        for w in [btn_assign, self.cmb_pallet, QLabel("שיוך למשטח:")]:
-            if isinstance(w, QLabel):
-                w.setObjectName("section_title")
-            p.addWidget(w)
-        p.addStretch()
-        p.addWidget(btn_new)
-        root.addWidget(pf)
+        # ── Pallet assignment bar ─────────────────────────────────────────────
+        assign_frame = QFrame(); assign_frame.setObjectName("card")
+        assign_lay = QHBoxLayout(assign_frame)
+        assign_lay.setContentsMargins(14, 10, 14, 10); assign_lay.setSpacing(12)
 
-        # Legend
-        legend = QLabel(
-            "מקרא:  מתג ירוק/אדום = קיים / לא קיים פיזית  │  "
-            "⚠ = פריט זהה (PN+אחסון) בשורה אחרת, לחץ לפרטי משטח  │  "
-            "⚑ = שויך למשטח, לחץ לפרטים"
-        )
-        legend.setObjectName("warn_label")
+        lbl_pal = QLabel("מס' משטח:")
+        lbl_pal.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+
+        self.cmb_pallet = QComboBox()
+        self.cmb_pallet.setEditable(True)
+        self.cmb_pallet.setMinimumHeight(36)
+        self.cmb_pallet.setFixedWidth(160)
+
+        self.btn_assign = QPushButton("שייך פריטים נבחרים")
+        self.btn_assign.setMinimumHeight(36)
+        self.btn_assign.setEnabled(False)
+        self.btn_assign.clicked.connect(self._assign_selected)
+
+        self.btn_detach = QPushButton("נתק שיוך")
+        self.btn_detach.setObjectName("btn_secondary")
+        self.btn_detach.setMinimumHeight(36)
+        self.btn_detach.setEnabled(False)
+        self.btn_detach.clicked.connect(self._detach_selected)
+
+        self.lbl_selected = QLabel("לא נבחרו פריטים")
+        self.lbl_selected.setStyleSheet("font-size: 12px; color: #757575;")
+
+        assign_lay.addWidget(lbl_pal)
+        assign_lay.addWidget(self.cmb_pallet)
+        assign_lay.addWidget(self.btn_assign)
+        assign_lay.addWidget(self.btn_detach)
+        assign_lay.addStretch()
+        assign_lay.addWidget(self.lbl_selected)
+        root.addWidget(assign_frame)
+
+        legend = QLabel("** מקרא חיוויים **\n❗ = קיים פריט זהה (PN + אתר איחסון) במספר שורות")
+        legend.setObjectName("status_label")
         legend.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(legend)
-
-    # ── Headers ───────────────────────────────────────────────────────────────
-
-    def _apply_headers(self):
-        self.table.setHorizontalHeaderLabels(db.get_column_headers())
-        for i in range(1, NUM_COLS):
-            self.table.setColumnHidden(i, db.get_col_hidden(i))
-        # COL_DUP and COL_PAL are always visible (functional indicators)
-        self.table.setColumnHidden(COL_DUP, False)
-        self.table.setColumnHidden(COL_PAL, False)
 
     # ── Data helpers ──────────────────────────────────────────────────────────
 
     def _refresh_filter_combos(self):
-        for cmb, col in [(self.cmb_storage, "Storage"),
-                         (self.cmb_area,    "Area"),
-                         (self.cmb_bin,     "Bin")]:
+        for cmb, col in [
+            (self.cmb_bin,     "Bin"),
+            (self.cmb_storage, "Storage"),
+        ]:
             prev = cmb.currentText()
             cmb.blockSignals(True)
             cmb.clear()
-            cmb.addItem(f"-- {col} --")
+            cmb.addItem("-- בחר --")
             for v in db.get_distinct_values(col):
                 cmb.addItem(v)
             idx = cmb.findText(prev)
-            if idx >= 0:
-                cmb.setCurrentIndex(idx)
+            cmb.setCurrentIndex(idx if idx >= 0 else 0)
             cmb.blockSignals(False)
 
-    def _reload_pallets(self):
+    def _refresh_pallet_combo(self):
+        pallets = db.get_pallets()
+        labels  = ["–"] + [str(p["PalletID"]) for p in pallets]
+        prev    = self.cmb_pallet.currentText()
         self.cmb_pallet.blockSignals(True)
         self.cmb_pallet.clear()
-        self.cmb_pallet.addItem("-- בחר משטח --", None)
-        for p in db.get_pallets():
-            self.cmb_pallet.addItem(f"P-{p['PalletID']}", p["PalletID"])
+        self.cmb_pallet.addItem("–", None)
+        for p in pallets:
+            self.cmb_pallet.addItem(str(p["PalletID"]), p["PalletID"])
+        completer = QCompleter(labels, self.cmb_pallet)
+        completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.cmb_pallet.setCompleter(completer)
+        idx = self.cmb_pallet.findText(prev)
+        if idx >= 0:
+            self.cmb_pallet.setCurrentIndex(idx)
         self.cmb_pallet.blockSignals(False)
 
     def _search(self):
         pn      = self.txt_pn.text().strip()
-        storage = "" if self.cmb_storage.currentText().startswith("--") else self.cmb_storage.currentText()
-        area    = "" if self.cmb_area.currentText().startswith("--")    else self.cmb_area.currentText()
-        bin_    = "" if self.cmb_bin.currentText().startswith("--")     else self.cmb_bin.currentText()
-        all_rows = db.get_inventory_with_assignments(
-            pn, storage, area, bin_, MAX_ROWS,
-            unassigned_only=self.chk_unassigned.isChecked(),
+        cat     = self.txt_cat.text().strip()
+        bin_    = self.cmb_bin.currentText()     if self.cmb_bin.currentIndex()     > 0 else ""
+        storage = self.cmb_storage.currentText() if self.cmb_storage.currentIndex() > 0 else ""
+
+        self.lbl_title.setText(
+            f"שלב 1: בחירת איתור להעברה ({bin_})" if bin_
+            else "שלב 1: בחירת איתור להעברה"
         )
-        truncated = len(all_rows) > MAX_ROWS
-        self._rows = list(all_rows[:MAX_ROWS])
+
+        all_rows = db.get_inventory_with_assignments(pn, storage, "", bin_, MAX_ROWS)
+        if cat:
+            all_rows = [r for r in all_rows if cat.lower() in str(r["Cat"] or "").lower()]
+        if self.chk_no_pallet.isChecked():
+            all_rows = [r for r in all_rows if r["PalletID"] is None]
+        truncated    = len(all_rows) > MAX_ROWS
+        self._rows   = list(all_rows[:MAX_ROWS])
+        self._apply_sort()
+        self._refresh_pallet_combo()
         self._populate_table(truncated)
 
     def _clear_filter(self):
         self.txt_pn.clear()
-        self.cmb_storage.setCurrentIndex(0)
-        self.cmb_area.setCurrentIndex(0)
-        self.cmb_bin.setCurrentIndex(0)
-        self.chk_unassigned.setChecked(False)
+        self.txt_cat.clear()
+        for cmb in (self.cmb_bin, self.cmb_storage):
+            cmb.blockSignals(True); cmb.setCurrentIndex(0); cmb.blockSignals(False)
+        self.chk_no_pallet.blockSignals(True)
+        self.chk_no_pallet.setChecked(False)
+        self.chk_no_pallet.blockSignals(False)
         self._search()
+
+    # ── Sorting ───────────────────────────────────────────────────────────────
+
+    def _on_header_clicked(self, col: int):
+        if col not in _SORT_KEY:
+            return
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        order = Qt.SortOrder.AscendingOrder if self._sort_asc else Qt.SortOrder.DescendingOrder
+        self.table.horizontalHeader().setSortIndicator(col, order)
+        self._apply_sort()
+        self._populate_table()
+
+    def _apply_sort(self):
+        if self._sort_col in _SORT_KEY:
+            key_fn = _SORT_KEY[self._sort_col]
+            self._rows.sort(key=key_fn, reverse=not self._sort_asc)
 
     # ── Table population ──────────────────────────────────────────────────────
 
@@ -323,205 +341,179 @@ class InventoryScreen(QWidget):
         rows = self._rows
         n    = len(rows)
 
-        # Duplicate indicator: same (Pn, Storage) appears > once in current results
-        dup_keys: set = {
-            k for k, cnt in
-            Counter((r["Pn"], r["Storage"]) for r in rows).items()
-            if cnt > 1
-        }
-
         msg = f"נמצאו: {n} פריטים"
         if truncated:
-            msg += f"  ← מוצגים {MAX_ROWS} הראשונים בלבד, צמצם את החיפוש"
+            msg += f"  ← מוצגים {MAX_ROWS} הראשונים בלבד"
         self.lbl_count.setText(msg)
 
-        # Block signals during population to prevent itemChanged firing DB writes
-        self._populating = True
-        self.table.setUpdatesEnabled(False)
+        key_counts = Counter((row["Pn"], row["Storage"]) for row in rows)
+        dup_keys   = {k for k, cnt in key_counts.items() if cnt > 1}
+
         self.table.blockSignals(True)
+        self.table.setUpdatesEnabled(False)
         self.table.setRowCount(0)
         self.table.setRowCount(n)
-        self._cb_list = [None] * n
 
         for r, row in enumerate(rows):
             inv_id    = row["InventoryID"]
             pallet_id = row["PalletID"]
             is_stock  = bool(row["IsInStock"])
-            is_dup    = (row["Pn"], row["Storage"]) in dup_keys
-            row_bg    = BG_ASSIGNED if pallet_id else None
 
-            def mk(text, fg=None, bold=False, selectable=False):
+            def mk(text, bold=False):
                 item = QTableWidgetItem(str(text) if text is not None else "")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                flags = Qt.ItemFlag.ItemIsEnabled
-                if selectable:
-                    flags |= Qt.ItemFlag.ItemIsSelectable
-                item.setFlags(flags)
-                if fg:
-                    item.setForeground(QBrush(fg))
-                if row_bg:
-                    item.setBackground(QBrush(row_bg))
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 if bold:
                     f = item.font(); f.setBold(True); item.setFont(f)
                 return item
 
-            # ── COL_CB: selection checkbox widget ─────────────────────────────
-            cb = QCheckBox()
-            if not is_stock:
-                cb.setEnabled(False)
-            cw = QWidget()
-            cl = QHBoxLayout(cw)
-            cl.addWidget(cb)
-            cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            cl.setContentsMargins(4, 0, 4, 0)
-            self.table.setCellWidget(r, COL_CB, cw)
-            self._cb_list[r] = cb
+            # ── Checkbox: only checkable when ממוקם ──────────────────────────
+            chk_item = QTableWidgetItem()
+            chk_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            chk_item.setCheckState(Qt.CheckState.Unchecked)
+            if is_stock:
+                chk_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            else:
+                chk_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(r, COL_CHK, chk_item)
 
-            # ── Data cells ────────────────────────────────────────────────────
-            self.table.setItem(r, COL_PN,    mk(row["Pn"],           bold=True))
-            self.table.setItem(r, COL_CAT,   mk(row["Cat"]))
-            self.table.setItem(r, COL_UOM,   mk(row["UnitOfMeasure"]))
-            self.table.setItem(r, COL_BATCH, mk(row["Batch"]))
-            self.table.setItem(r, COL_WBS,   mk(row["WBS"]))
-            self.table.setItem(r, COL_STO,   mk(row["Storage"]))
-            self.table.setItem(r, COL_AREA,  mk(row["Area"]))
-            self.table.setItem(r, COL_BIN,   mk(row["Bin"]))
-            self.table.setItem(r, COL_DEST,  mk(row["DestArea"]))
-            self.table.setItem(r, COL_QTY,   mk(row["Qty"]))
-            self.table.setItem(r, COL_MULTI, mk(row["MultiLocation"]))
+            self.table.setItem(r, COL_PN,   mk(row["Pn"],   bold=True))
+            self.table.setItem(r, COL_CAT,  mk(row["Cat"]))
+            self.table.setItem(r, COL_BIN,  mk(row["Bin"]))
+            self.table.setItem(r, COL_STO,  mk(row["Storage"]))
+            self.table.setItem(r, COL_AREA, mk(row["Area"]))
+            self.table.setItem(r, COL_DEST, mk(row["DestArea"]))
 
-            # ── COL_STOCK: green/red toggle switch ───────────────────────────
+            # ── Toggle switch ─────────────────────────────────────────────────
             toggle = ToggleSwitch(is_stock)
             toggle.toggled.connect(
-                lambda val, iid=inv_id: db.set_is_in_stock(iid, val, self.username)
-            )
-            toggle.toggled.connect(
-                lambda val, row_idx=r: self._sync_cb_to_stock(row_idx, val)
+                lambda val, iid=inv_id, row_r=r: self._on_toggle(iid, row_r, val)
             )
             self.table.setCellWidget(r, COL_STOCK, toggle)
 
-            # ── COL_DUP: ⚠ when same PN+Storage elsewhere ────────────────────
-            if is_dup:
-                dup_item = mk("⚠", fg=COLOR_DUP, selectable=True)
-                dup_item.setToolTip(
-                    f"קיימות שורות נוספות עם PN '{row['Pn']}' "
-                    f"באחסון '{row['Storage']}'"
-                )
-            else:
-                dup_item = mk("")
-            self.table.setItem(r, COL_DUP, dup_item)
+            # ── Assigned pallet ───────────────────────────────────────────────
+            self.table.setItem(r, COL_PAL, mk(str(pallet_id) if pallet_id is not None else "–"))
 
-            # ── COL_PAL: ⚑ P-XXXX when assigned, clickable ───────────────────
-            if pallet_id:
-                pal_item = mk(f"⚑  P-{pallet_id}", fg=COLOR_PAL, bold=True, selectable=True)
-                pal_item.setToolTip(f"לחץ לפרטי משטח P-{pallet_id}")
+            # ── Indicator ❗ ───────────────────────────────────────────────────
+            is_dup = (row["Pn"], row["Storage"]) in dup_keys
+            if is_dup:
+                ind = mk("❗")
+                ind.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                ind.setForeground(QBrush(COLOR_IND))
             else:
-                pal_item = mk("")
-            self.table.setItem(r, COL_PAL, pal_item)
+                ind = mk("")
+            self.table.setItem(r, COL_IND, ind)
 
             self.table.setRowHeight(r, 46)
 
         self.table.blockSignals(False)
         self.table.setUpdatesEnabled(True)
-        self._populating = False
+        self._update_selection_label()
 
-    # ── Signal handlers ───────────────────────────────────────────────────────
+    # ── Toggle ↔ Checkbox sync ────────────────────────────────────────────────
 
-    def _sync_cb_to_stock(self, row_idx: int, in_stock: bool):
-        cb = self._cb_list[row_idx] if row_idx < len(self._cb_list) else None
-        if cb is None:
+    def _on_toggle(self, inv_id: int, row: int, val: bool):
+        db.set_is_in_stock(inv_id, val, self.username)
+        chk = self.table.item(row, COL_CHK)
+        if chk:
+            self.table.blockSignals(True)
+            if val:
+                chk.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+                chk.setCheckState(Qt.CheckState.Checked)
+            else:
+                chk.setCheckState(Qt.CheckState.Unchecked)
+                chk.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.blockSignals(False)
+        self._update_selection_label()
+
+    # ── Item change (checkbox guard) ──────────────────────────────────────────
+
+    def _on_item_changed(self, item: QTableWidgetItem):
+        if item.column() != COL_CHK:
             return
-        if not in_stock:
-            cb.setChecked(False)
-        cb.setEnabled(in_stock)
+        if item.checkState() == Qt.CheckState.Checked:
+            toggle = self.table.cellWidget(item.row(), COL_STOCK)
+            if toggle and not toggle.isChecked():
+                self.table.blockSignals(True)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.table.blockSignals(False)
+                return
+        self._update_selection_label()
 
     def _on_item_clicked(self, item: QTableWidgetItem):
-        """Fires when user clicks COL_PAL or COL_DUP indicator."""
-        if item.column() not in (COL_PAL, COL_DUP):
-            return
-        r = item.row()
-        if r >= len(self._rows):
-            return
+        if item.column() == COL_IND and item.text() == "❗":
+            self._show_dup_popup(item.row())
 
-        row_data = self._rows[r]
-        pid = row_data["PalletID"]
+    # ── Selection helpers ─────────────────────────────────────────────────────
 
-        if item.column() == COL_DUP:
-            pn      = row_data["Pn"]
-            storage = row_data["Storage"]
-            msg = f"קיימות שורות נוספות בטבלה עם:\nPN: {pn}   אחסון: {storage}"
-            if pid:
-                msg += f"\n\nפריט זה שויך למשטח P-{pid}"
-            QMessageBox.information(self, "פריט כפול", msg)
-            return
+    def _update_selection_label(self):
+        count = self._checked_count()
+        if count == 0:
+            self.lbl_selected.setText("לא נבחרו פריטים")
+            self.btn_assign.setEnabled(False)
+            self.btn_detach.setEnabled(False)
+        else:
+            self.lbl_selected.setText(f"נבחרו: {count} פריטים")
+            self.btn_assign.setEnabled(True)
+            self.btn_detach.setEnabled(True)
 
-        # COL_PAL — requires assignment
-        if not pid:
-            return
-        inv_id = row_data["InventoryID"]
-        dlg = QMessageBox(self)
-        dlg.setWindowTitle("משטח מושייך")
-        dlg.setText(f"פריט זה שויך למשטח  P-{pid}")
-        dlg.setInformativeText("בחר פעולה:")
-        btn_detach  = dlg.addButton("הפרד ממשטח",  QMessageBox.ButtonRole.DestructiveRole)
-        btn_details = dlg.addButton("פרטי משטח",   QMessageBox.ButtonRole.ActionRole)
-        dlg.addButton("סגור", QMessageBox.ButtonRole.RejectRole)
-        dlg.exec()
+    def _checked_count(self) -> int:
+        return sum(1 for r in range(self.table.rowCount()) if self._is_checked(r))
 
-        if dlg.clickedButton() == btn_detach:
-            confirm = QMessageBox.question(
-                self, "אישור הפרדה",
-                f"להפריד פריט זה ממשטח P-{pid}?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-            if confirm == QMessageBox.StandardButton.Yes:
-                db.detach_item_from_pallet(inv_id, self.username)
-                self._search()
-        elif dlg.clickedButton() == btn_details:
-            PalletDetailPopup(int(pid), self).exec()
+    def _is_checked(self, row: int) -> bool:
+        item = self.table.item(row, COL_CHK)
+        return item is not None and item.checkState() == Qt.CheckState.Checked
 
-    # ── Pallet management ──────────────────────────────────────────────────────
+    def _selected_inv_ids(self) -> list[int]:
+        return [
+            self._rows[r]["InventoryID"]
+            for r in range(self.table.rowCount())
+            if r < len(self._rows) and self._is_checked(r)
+        ]
 
-    def _create_pallet(self):
-        dlg = NewPalletDialog(self)
-        if dlg.exec() != QDialog.DialogCode.Accepted:
-            return
-        try:
-            db.create_pallet(dlg.pallet_id, self.username)
-            self._reload_pallets()
-            idx = self.cmb_pallet.findData(dlg.pallet_id)
-            if idx >= 0:
-                self.cmb_pallet.setCurrentIndex(idx)
-            QMessageBox.information(self, "הצלחה", f"משטח P-{dlg.pallet_id} נוצר ✓")
-        except ValueError as e:
-            QMessageBox.warning(self, "שגיאה", str(e))
+    # ── Pallet assignment ─────────────────────────────────────────────────────
 
     def _assign_selected(self):
+        inv_ids = self._selected_inv_ids()
+        if not inv_ids:
+            return
         pallet_id = self.cmb_pallet.currentData()
         if pallet_id is None:
-            QMessageBox.warning(self, "שגיאה", "יש לבחור משטח לפני השיוך")
+            QMessageBox.warning(self, "שגיאה", "יש לבחור מספר משטח לפני השיוך.")
             return
-        selected = [
-            self._rows[r]["InventoryID"]
-            for r, cb in enumerate(self._cb_list)
-            if cb is not None and cb.isChecked()
-        ]
-        if not selected:
-            QMessageBox.warning(self, "שגיאה", "יש לסמן לפחות פריט אחד לשיוך")
-            return
-        reply = QMessageBox.question(
-            self, "אישור שיוך",
-            f"לשייך {len(selected)} פריטים למשטח P-{pallet_id}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply != QMessageBox.StandardButton.Yes:
-            return
-        db.assign_items_to_pallet(selected, pallet_id, self.username)
-        QMessageBox.information(self, "הצלחה", "השיוך בוצע בהצלחה ✓")
+        db.assign_items_to_pallet(inv_ids, pallet_id, self.username)
         self._search()
 
+    def _detach_selected(self):
+        inv_ids = self._selected_inv_ids()
+        if not inv_ids:
+            return
+        for iid in inv_ids:
+            db.detach_item_from_pallet(iid, self.username)
+        self._search()
+
+    # ── Duplicate popup ───────────────────────────────────────────────────────
+
+    def _show_dup_popup(self, r: int):
+        if r >= len(self._rows):
+            return
+        row     = self._rows[r]
+        pn      = row["Pn"]
+        storage = row["Storage"]
+        dups    = [i for i, rd in enumerate(self._rows)
+                   if rd["Pn"] == pn and rd["Storage"] == storage]
+        lines   = [f"פריט: {pn}  |  אתר איחסון: {storage}",
+                   f"מספר שורות זהות: {len(dups)}"]
+        for i in dups:
+            rd      = self._rows[i]
+            pid     = rd["PalletID"]
+            bin_val = rd["Bin"] or "–"
+            pal_str = f"משטח: {pid}" if pid is not None else "ללא משטח"
+            lines.append(f"  • Bin: {bin_val}  |  {pal_str}")
+        QMessageBox.information(self, "חיווי כפילויות", "\n".join(lines))
+
+    # ── Public refresh ────────────────────────────────────────────────────────
+
     def refresh(self):
-        self._apply_headers()
         self._refresh_filter_combos()
-        self._reload_pallets()
         self._search()

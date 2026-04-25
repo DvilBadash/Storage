@@ -125,7 +125,7 @@ QTabBar::tab:hover { background: #E3F2FD; }
 QCheckBox { spacing: 10px; font-size: 13px; }
 QCheckBox::indicator { width: 22px; height: 22px; border: 2px solid #BDBDBD; border-radius: 4px; background: white; }
 QCheckBox::indicator:checked { background-color: #1976D2; border-color: #1976D2; }
-QCheckBox::indicator:checked::after { content: ""; }
+
 
 QMessageBox { background-color: white; }
 QMessageBox QLabel { color: #212121; font-size: 14px; }
