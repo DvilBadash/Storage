@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt
 
 import database as db
 import styles
+import _icon
 from login_window import LoginWindow
 from main_window import MainWindow
 
@@ -39,6 +40,7 @@ def main():
 
     theme = db.get_setting("theme", "light")
     app.setStyleSheet(styles.get_theme(theme))
+    app.setWindowIcon(_icon.app_icon())
 
     wh_name = db.get_setting("warehouse_name", "YYY")
     login = LoginWindow(wh_name)
