@@ -409,6 +409,7 @@ def import_pallets_from_rows(rows: list[dict], user: str) -> dict:
 def detach_item_from_pallet(inv_id: int, user: str):
     with get_conn() as c:
         c.execute("DELETE FROM PALLET_Assignment WHERE InventoryID=?", (inv_id,))
+        c.execute("UPDATE InventoryOld SET IsInStock=0 WHERE InventoryID=?", (inv_id,))
         c.commit()
     log(user, "DETACH_FROM_PALLET", f"InventoryID={inv_id}")
 
