@@ -267,6 +267,20 @@ class SettingsScreen(QWidget):
         db.log(self.username, "LOAD_LOCATIONS", f"נטענו {len(rows)} איתורים מ: {path}")
         QMessageBox.information(self, "הצלחה", f"נטענו {len(rows)} איתורים ✓")
 
+    # ── Archive helper ────────────────────────────────────────────────────────
+
+    def _do_archive(self, prefix: str) -> str | None:
+        rows = db.get_all_pallets_export()
+        if not rows:
+            return None
+        arc_dir = db.get_setting(
+            "archive_path",
+            os.path.join(os.path.dirname(db.DB_PATH), "archive"),
+        )
+        path = xh.archive_path(arc_dir, prefix)
+        xh.export_pallets_xlsx(rows, path)
+        return path
+
     def _import_pallets(self):
         path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ משטחים Excel", "", "Excel Files (*.xlsx *.xls)")
         if not path:
@@ -278,7 +292,11 @@ class SettingsScreen(QWidget):
             return
         db.import_pallets_from_rows(rows, self.username)
         self.lbl_last_import.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
-        QMessageBox.information(self, "הצלחה", f"יובאו {len(rows)} שורות משטחים ✓")
+        arc = self._do_archive("Import_FinalOutput")
+        msg = f"יובאו {len(rows)} שורות משטחים ✓"
+        if arc:
+            msg += f"\nגיבוי ארכיון:\n{arc}"
+        QMessageBox.information(self, "הצלחה", msg)
 
     def _load_pallet_codes(self):
         path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ קודי משטחים Excel", "", "Excel Files (*.xlsx *.xls)")
@@ -294,7 +312,11 @@ class SettingsScreen(QWidget):
             return
         db.bulk_insert_pallet_codes(codes, self.username)
         self.lbl_pallet_codes.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
-        QMessageBox.information(self, "הצלחה", f"נטענו {len(codes)} קודי משטחים ✓")
+        arc = self._do_archive("Import_PalletCodes")
+        msg = f"נטענו {len(codes)} קודי משטחים ✓"
+        if arc:
+            msg += f"\nגיבוי ארכיון:\n{arc}"
+        QMessageBox.information(self, "הצלחה", msg)
 
     def _create_pallet_codes_sample(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
@@ -304,14 +326,18 @@ class SettingsScreen(QWidget):
 
     def _export_assignments(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
-        arc_path   = xh.archive_path(export_dir, "NewWarehouse_PalletAssignments")
         rows = db.get_all_pallets_export()
         if not rows:
             QMessageBox.warning(self, "אזהרה", "אין נתונים לייצוא")
             return
-        xh.export_pallets_xlsx(rows, arc_path)
-        db.log(self.username, "EXPORT_ASSIGNMENTS", f"יוצא ל: {arc_path}")
-        QMessageBox.information(self, "הצלחה", f"קובץ יוצא:\n{arc_path}")
+        out_path = xh.archive_path(export_dir, "NewWarehouse_PalletAssignments")
+        xh.export_pallets_xlsx(rows, out_path)
+        arc = self._do_archive("Export_PalletAssignments")
+        db.log(self.username, "EXPORT_ASSIGNMENTS", f"יוצא ל: {out_path}")
+        msg = f"קובץ יוצא:\n{out_path}"
+        if arc:
+            msg += f"\n\nגיבוי ארכיון:\n{arc}"
+        QMessageBox.information(self, "הצלחה", msg)
 
     def _reload_users_table(self):
         users = db.get_all_users()
