@@ -189,13 +189,20 @@ def _seed_settings(c):
     defaults = [
         ("warehouse_name", "YYY"),
         ("theme", "light"),
-        ("export_path", os.path.expanduser("~/Desktop")),
-        ("archive_path", os.path.join(os.path.dirname(DB_PATH), "archive")),
+        ("export_path",  r"C:\Temp\New_WH_EXP"),
+        ("archive_path", r"C:\Temp\New_WH_Archive"),
         ("last_load_date", ""),
         ("last_pallet_import", ""),
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
+    # Migrate old Desktop / local-archive paths that were seeded in earlier versions
+    _old_export  = os.path.expanduser("~/Desktop")
+    _old_archive = os.path.join(os.path.dirname(DB_PATH), "archive")
+    c.execute("UPDATE Settings SET SettingValue=? WHERE SettingKey='export_path'  AND SettingValue=?",
+              (r"C:\Temp\New_WH_EXP",     _old_export))
+    c.execute("UPDATE Settings SET SettingValue=? WHERE SettingKey='archive_path' AND SettingValue=?",
+              (r"C:\Temp\New_WH_Archive",  _old_archive))
     for k, v in {**DEFAULT_ITEM_HEADERS, **DEFAULT_PAL_HEADERS}.items():
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
     for k in {**DEFAULT_ITEM_HEADERS, **DEFAULT_PAL_HEADERS}.keys():
