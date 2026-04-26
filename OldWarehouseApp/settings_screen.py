@@ -134,6 +134,22 @@ class SettingsScreen(QWidget):
         g_lay.addWidget(btn_sample)
 
         lay.addWidget(grp)
+
+        grp_reset = QGroupBox("איפוס נתונים")
+        g_reset = QVBoxLayout(grp_reset); g_reset.setSpacing(10)
+        lbl_warn = QLabel("פעולה זו תמחק לצמיתות את כל המלאי, השיוכים והמשטחים.")
+        lbl_warn.setStyleSheet("color:#B71C1C; font-size:12px;")
+        g_reset.addWidget(lbl_warn)
+        btn_reset = QPushButton("🗑  איפוס כל הנתונים")
+        btn_reset.setStyleSheet(
+            "QPushButton { background:#C62828; color:white; font-weight:bold; border-radius:6px; padding:8px; }"
+            "QPushButton:hover { background:#B71C1C; }"
+        )
+        btn_reset.setMinimumHeight(48)
+        btn_reset.clicked.connect(self._reset_all_data)
+        g_reset.addWidget(btn_reset)
+        lay.addWidget(grp_reset)
+
         lay.addStretch()
         return w
 
@@ -400,6 +416,23 @@ class SettingsScreen(QWidget):
                 sample += f"\n... ועוד {len(not_found) - 6}"
             msg += f"\n\nפריטים שלא נמצאו במלאי ({len(not_found)}):\n{sample}"
         QMessageBox.information(self, "תוצאות קליטה", msg)
+
+    def _reset_all_data(self):
+        reply = QMessageBox.question(
+            self, "איפוס נתונים",
+            "האם בטוח שברצונך למחוק את כל הנתונים?\n\n"
+            "• כל המלאי (InventoryOld)\n"
+            "• כל שיוכי המשטחים\n"
+            "• כל המשטחים\n\n"
+            "פעולה זו אינה הפיכה.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        db.reset_all_data()
+        db.log(self.username, "RESET_ALL_DATA", "כל הנתונים נמחקו")
+        QMessageBox.information(self, "בוצע", "כל הנתונים נמחקו ✓")
 
     def _create_pallet_sample(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))

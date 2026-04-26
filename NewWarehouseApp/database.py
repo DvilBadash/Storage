@@ -321,6 +321,15 @@ def clear_locations():
         c.commit()
 
 
+def reset_all_data():
+    """Delete all pallets, pallet items and locations."""
+    with get_conn() as c:
+        c.execute("DELETE FROM PalletItems")
+        c.execute("DELETE FROM Pallets")
+        c.execute("DELETE FROM LocationNew")
+        c.commit()
+
+
 def bulk_insert_locations(rows: list[dict]):
     with get_conn() as c:
         for r in rows:

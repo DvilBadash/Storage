@@ -128,6 +128,23 @@ class SettingsScreen(QWidget):
         g3.addWidget(btn3)
         lay.addWidget(grp3)
 
+        # ── 4. Reset database ─────────────────────────────────────────────
+        grp_reset = QGroupBox("4.  איפוס נתונים")
+        g_reset = QVBoxLayout(grp_reset); g_reset.setSpacing(10)
+        lbl_warn = QLabel("פעולה זו תמחק לצמיתות את כל הנתונים: פריטי משטח, משטחים ואיתורים.")
+        lbl_warn.setStyleSheet("color:#B71C1C; font-size:12px;")
+        lbl_warn.setWordWrap(True)
+        g_reset.addWidget(lbl_warn)
+        btn_reset = QPushButton("🗑  איפוס כל הנתונים")
+        btn_reset.setStyleSheet(
+            "QPushButton { background:#C62828; color:white; font-weight:bold; border-radius:6px; padding:8px; }"
+            "QPushButton:hover { background:#B71C1C; }"
+        )
+        btn_reset.setMinimumHeight(48)
+        btn_reset.clicked.connect(self._reset_all_data)
+        g_reset.addWidget(btn_reset)
+        lay.addWidget(grp_reset)
+
         lay.addStretch()
         return w
 
@@ -331,6 +348,25 @@ class SettingsScreen(QWidget):
         xh.export_pallets_xlsx(rows, out_path)
         db.log(self.username, "EXPORT_ASSIGNMENTS", f"יוצא ל: {out_path}")
         QMessageBox.information(self, "הצלחה", f"קובץ יוצא:\n{out_path}")
+
+    def _reset_all_data(self):
+        reply = QMessageBox.question(
+            self, "איפוס נתונים",
+            "האם בטוח שברצונך למחוק את כל הנתונים?\n\n"
+            "• כל פריטי המשטחים (PalletItems)\n"
+            "• כל המשטחים (Pallets)\n"
+            "• כל האיתורים (LocationNew)\n\n"
+            "פעולה זו אינה הפיכה.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        db.reset_all_data()
+        db.log(self.username, "RESET_ALL_DATA", "כל הנתונים נמחקו")
+        self.lbl_loc_status.setText("טעינה אחרונה: לא בוצע")
+        self.lbl_pal_status.setText("טעינה אחרונה: לא בוצע")
+        QMessageBox.information(self, "בוצע", "כל הנתונים נמחקו ✓")
 
     def _reload_users_table(self):
         users = db.get_all_users()

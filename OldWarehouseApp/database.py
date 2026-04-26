@@ -456,6 +456,15 @@ def clear_inventory():
         c.commit()
 
 
+def reset_all_data():
+    """Delete all inventory, pallet assignments and pallets."""
+    with get_conn() as c:
+        c.execute("DELETE FROM PALLET_Assignment")
+        c.execute("DELETE FROM InventoryOld")
+        c.execute("DELETE FROM Pallets")
+        c.commit()
+
+
 def bulk_insert_inventory(rows: list[dict]):
     with get_conn() as c:
         for r in rows:
