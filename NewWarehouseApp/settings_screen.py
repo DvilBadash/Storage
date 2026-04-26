@@ -82,11 +82,7 @@ class SettingsScreen(QWidget):
         # ── 1. Load locations ─────────────────────────────────────────────
         grp1 = QGroupBox("1.  טעינת איתורים")
         g1 = QVBoxLayout(grp1); g1.setSpacing(10)
-        sample_loc = os.path.join(SAMPLE_DIR, "newBIns.xlsx")
-        hint1 = QLabel(
-            f"קובץ: newBIns.xlsx{'  ✓ נמצא' if os.path.exists(sample_loc) else '  (לא נמצא – תיפתח חלונית בחירה)'}\n"
-            "האיתורים יופיעו בתיבת הבחירה של האיתור לצימוד"
-        )
+        hint1 = QLabel("בחר קובץ newBIns.xlsx.\nהאיתורים יופיעו בתיבת הבחירה של האיתור לצימוד.")
         hint1.setStyleSheet("color:#616161; font-size:12px;")
         g1.addWidget(hint1)
         btn1 = QPushButton("📍  טען איתורים")
@@ -103,11 +99,7 @@ class SettingsScreen(QWidget):
         # ── 2. Load pallet codes ──────────────────────────────────────────
         grp2 = QGroupBox("2.  טעינת משטחים")
         g2 = QVBoxLayout(grp2); g2.setSpacing(10)
-        sample_pal = os.path.join(SAMPLE_DIR, "Pallets.xlsx")
-        hint2 = QLabel(
-            f"קובץ: Pallets.xlsx{'  ✓ נמצא' if os.path.exists(sample_pal) else '  (לא נמצא – תיפתח חלונית בחירה)'}\n"
-            "המשטחים יופיעו בתיבת הבחירה לצימוד"
-        )
+        hint2 = QLabel("בחר קובץ Pallets.xlsx.\nהמשטחים יופיעו בתיבת הבחירה לצימוד.")
         hint2.setStyleSheet("color:#616161; font-size:12px;")
         g2.addWidget(hint2)
         btn2 = QPushButton("📋  טען משטחים")
@@ -292,14 +284,11 @@ class SettingsScreen(QWidget):
             target.setText(path)
 
     def _load_locations_smart(self):
-        """Load locations – uses SampleData/newBIns.xlsx if present, else file dialog."""
-        path = os.path.join(SAMPLE_DIR, "newBIns.xlsx")
-        if not os.path.exists(path):
-            path, _ = QFileDialog.getOpenFileName(
-                self, "בחר קובץ איתורים (newBIns.xlsx)", "", "Excel Files (*.xlsx *.xls)"
-            )
-            if not path:
-                return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "בחר קובץ איתורים (newBIns.xlsx)", "", "Excel Files (*.xlsx *.xls)"
+        )
+        if not path:
+            return
         try:
             rows = xh.load_locations_xlsx(path)
         except Exception as e:
@@ -314,14 +303,11 @@ class SettingsScreen(QWidget):
         QMessageBox.information(self, "הצלחה", f"נטענו {len(rows)} איתורים ✓")
 
     def _load_pallets_smart(self):
-        """Load pallet codes – uses SampleData/Pallets.xlsx if present, else file dialog."""
-        path = os.path.join(SAMPLE_DIR, "Pallets.xlsx")
-        if not os.path.exists(path):
-            path, _ = QFileDialog.getOpenFileName(
-                self, "בחר קובץ משטחים (Pallets.xlsx)", "", "Excel Files (*.xlsx *.xls)"
-            )
-            if not path:
-                return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "בחר קובץ משטחים (Pallets.xlsx)", "", "Excel Files (*.xlsx *.xls)"
+        )
+        if not path:
+            return
         try:
             codes = xh.load_pallet_codes_xlsx(path)
         except Exception as e:

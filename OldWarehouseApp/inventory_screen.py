@@ -14,14 +14,15 @@ MAX_ROWS = 500
 COL_CHK   = 0   # ✓ בחירה
 COL_PN    = 1   # PN / מספר חלק
 COL_CAT   = 2   # מס' קטלוגי (חומר)
-COL_BIN   = 3   # איתור (Bin)
-COL_STO   = 4   # אתר איחסון (Storage)
-COL_AREA  = 5   # סוג איחסון (Area)
-COL_DEST  = 6   # אזור יעד (DestArea)
-COL_STOCK = 7   # ממוקם – toggle switch
-COL_PAL   = 8   # משטח משויך
-COL_IND   = 9   # חיווי – ❗ indicator
-NUM_COLS  = 10
+COL_BATCH = 3   # סדרה (Batch)
+COL_WBS   = 4   # WBS
+COL_QTY   = 5   # כמות (Qty)
+COL_BIN   = 6   # איתור (Bin)
+COL_DEST  = 7   # אזור יעד (DestArea)
+COL_STOCK = 8   # ממוקם – toggle switch
+COL_PAL   = 9   # משטח משויך
+COL_IND   = 10  # חיווי – ❗ indicator
+NUM_COLS  = 11
 
 COLOR_IND = QColor("#D32F2F")
 
@@ -29,9 +30,10 @@ COLOR_IND = QColor("#D32F2F")
 _SORT_KEY = {
     COL_PN:    lambda r: str(r["Pn"]      or "").lower(),
     COL_CAT:   lambda r: str(r["Cat"]     or "").lower(),
+    COL_BATCH: lambda r: str(r["Batch"]   or "").lower(),
+    COL_WBS:   lambda r: str(r["WBS"]     or "").lower(),
+    COL_QTY:   lambda r: float(r["Qty"]   or 0),
     COL_BIN:   lambda r: str(r["Bin"]     or "").lower(),
-    COL_STO:   lambda r: str(r["Storage"] or "").lower(),
-    COL_AREA:  lambda r: str(r["Area"]    or "").lower(),
     COL_DEST:  lambda r: str(r["DestArea"]or "").lower(),
     COL_STOCK: lambda r: int(r["IsInStock"] or 0),
     COL_PAL:   lambda r: (str(r["PalletID"]) if r["PalletID"] is not None else ""),
@@ -135,6 +137,7 @@ class InventoryScreen(QWidget):
         self.txt_pn = QLineEdit()
         self.txt_pn.setPlaceholderText("PN")
         self.txt_pn.setMinimumHeight(36)
+        self.txt_pn.setFixedWidth(100)
         self.txt_pn.returnPressed.connect(self._search)
 
         self.txt_cat = QLineEdit()
@@ -146,13 +149,13 @@ class InventoryScreen(QWidget):
         self.cmb_bin = QComboBox(); self.cmb_bin.setMinimumHeight(36)
         self.cmb_bin.currentIndexChanged.connect(self._search)
 
-        self.cmb_storage = QComboBox(); self.cmb_storage.setMinimumHeight(36)
-        self.cmb_storage.currentIndexChanged.connect(self._search)
+        self.cmb_filter_pallet = QComboBox(); self.cmb_filter_pallet.setMinimumHeight(36)
+        self.cmb_filter_pallet.currentIndexChanged.connect(self._search)
 
-        filter_row.addWidget(_filter_card("🔍  מספר חלק",   self.txt_pn))
+        filter_row.addWidget(_filter_card("🔍  PN",          self.txt_pn))
         filter_row.addWidget(_filter_card("🏷  מס' קטלוגי", self.txt_cat))
         filter_row.addWidget(_filter_card("📍  איתור",       self.cmb_bin))
-        filter_row.addWidget(_filter_card("🏭  אתר איחסון", self.cmb_storage))
+        filter_row.addWidget(_filter_card("📦  משטח",        self.cmb_filter_pallet))
 
         btn_clear = QPushButton("נקה")
         btn_clear.setObjectName("btn_secondary")
@@ -176,21 +179,21 @@ class InventoryScreen(QWidget):
         # ── Table ─────────────────────────────────────────────────────────────
         self.table = QTableWidget(0, NUM_COLS)
         self.table.setHorizontalHeaderLabels([
-            "✓", "PN\nמספר חלק", "מס' קטלוגי", "איתור",
-            "אתר\nאיחסון", "סוג\nאיחסון", "אזור\nיעד",
-            "ממוקם", "משטח\nמשויך", "חיווי",
+            "✓", "PN", "מס' קטלוגי", "סדרה", "WBS", "כמות",
+            "איתור", "אזור\nיעד", "ממוקם", "משטח\nמשויך", "חיווי",
         ])
         hh = self.table.horizontalHeader()
-        hh.setSectionResizeMode(COL_CHK,   QHeaderView.ResizeMode.Fixed);          hh.resizeSection(COL_CHK,   36)
-        hh.setSectionResizeMode(COL_PN,    QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(COL_CHK,   QHeaderView.ResizeMode.Fixed);   hh.resizeSection(COL_CHK,   36)
+        hh.setSectionResizeMode(COL_PN,    QHeaderView.ResizeMode.Fixed);   hh.resizeSection(COL_PN,    95)
         hh.setSectionResizeMode(COL_CAT,   QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_BIN,   QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_STO,   QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_AREA,  QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_BATCH, QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_WBS,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_QTY,   QHeaderView.ResizeMode.ResizeToContents)
+        hh.setSectionResizeMode(COL_BIN,   QHeaderView.ResizeMode.Stretch)
         hh.setSectionResizeMode(COL_DEST,  QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_STOCK, QHeaderView.ResizeMode.Fixed);           hh.resizeSection(COL_STOCK, 100)
+        hh.setSectionResizeMode(COL_STOCK, QHeaderView.ResizeMode.Fixed);   hh.resizeSection(COL_STOCK, 100)
         hh.setSectionResizeMode(COL_PAL,   QHeaderView.ResizeMode.ResizeToContents)
-        hh.setSectionResizeMode(COL_IND,   QHeaderView.ResizeMode.Fixed);           hh.resizeSection(COL_IND,    52)
+        hh.setSectionResizeMode(COL_IND,   QHeaderView.ResizeMode.Fixed);   hh.resizeSection(COL_IND,   52)
         hh.setMinimumSectionSize(36)
         hh.setSortIndicatorShown(True)
         hh.sectionClicked.connect(self._on_header_clicked)
@@ -243,7 +246,7 @@ class InventoryScreen(QWidget):
         assign_lay.addWidget(self.lbl_selected)
         root.addWidget(assign_frame)
 
-        legend = QLabel("** מקרא חיוויים **\n❗ = קיים פריט זהה (PN + אתר איחסון) במספר שורות")
+        legend = QLabel("** מקרא חיוויים **\n❗ = קיים פריט זהה (PN + Bin) במספר שורות")
         legend.setObjectName("status_label")
         legend.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(legend)
@@ -251,19 +254,25 @@ class InventoryScreen(QWidget):
     # ── Data helpers ──────────────────────────────────────────────────────────
 
     def _refresh_filter_combos(self):
-        for cmb, col in [
-            (self.cmb_bin,     "Bin"),
-            (self.cmb_storage, "Storage"),
-        ]:
-            prev = cmb.currentText()
-            cmb.blockSignals(True)
-            cmb.clear()
-            cmb.addItem("-- בחר --")
-            for v in db.get_distinct_values(col):
-                cmb.addItem(v)
-            idx = cmb.findText(prev)
-            cmb.setCurrentIndex(idx if idx >= 0 else 0)
-            cmb.blockSignals(False)
+        prev = self.cmb_bin.currentText()
+        self.cmb_bin.blockSignals(True)
+        self.cmb_bin.clear()
+        self.cmb_bin.addItem("-- בחר --")
+        for v in db.get_distinct_values("Bin"):
+            self.cmb_bin.addItem(v)
+        idx = self.cmb_bin.findText(prev)
+        self.cmb_bin.setCurrentIndex(idx if idx >= 0 else 0)
+        self.cmb_bin.blockSignals(False)
+
+        prev_p = self.cmb_filter_pallet.currentText()
+        self.cmb_filter_pallet.blockSignals(True)
+        self.cmb_filter_pallet.clear()
+        self.cmb_filter_pallet.addItem("-- בחר --", None)
+        for p in db.get_pallets():
+            self.cmb_filter_pallet.addItem(str(p["PalletID"]), p["PalletID"])
+        idx_p = self.cmb_filter_pallet.findText(prev_p)
+        self.cmb_filter_pallet.setCurrentIndex(idx_p if idx_p >= 0 else 0)
+        self.cmb_filter_pallet.blockSignals(False)
 
     def _refresh_pallet_combo(self):
         pallets = db.get_pallets()
@@ -282,21 +291,38 @@ class InventoryScreen(QWidget):
         if idx >= 0:
             self.cmb_pallet.setCurrentIndex(idx)
         self.cmb_pallet.blockSignals(False)
+        # keep filter pallet combo in sync
+        self._refresh_filter_pallet(pallets)
+
+    def _refresh_filter_pallet(self, pallets=None):
+        if pallets is None:
+            pallets = db.get_pallets()
+        prev = self.cmb_filter_pallet.currentData()
+        self.cmb_filter_pallet.blockSignals(True)
+        self.cmb_filter_pallet.clear()
+        self.cmb_filter_pallet.addItem("-- בחר --", None)
+        for p in pallets:
+            self.cmb_filter_pallet.addItem(str(p["PalletID"]), p["PalletID"])
+        idx = self.cmb_filter_pallet.findData(prev)
+        self.cmb_filter_pallet.setCurrentIndex(idx if idx >= 0 else 0)
+        self.cmb_filter_pallet.blockSignals(False)
 
     def _search(self):
         pn      = self.txt_pn.text().strip()
         cat     = self.txt_cat.text().strip()
-        bin_    = self.cmb_bin.currentText()     if self.cmb_bin.currentIndex()     > 0 else ""
-        storage = self.cmb_storage.currentText() if self.cmb_storage.currentIndex() > 0 else ""
+        bin_    = self.cmb_bin.currentText() if self.cmb_bin.currentIndex() > 0 else ""
+        pallet_f = self.cmb_filter_pallet.currentData()
 
         self.lbl_title.setText(
             f"שלב 1: בחירת איתור להעברה ({bin_})" if bin_
             else "שלב 1: בחירת איתור להעברה"
         )
 
-        all_rows = db.get_inventory_with_assignments(pn, storage, "", bin_, MAX_ROWS)
+        all_rows = db.get_inventory_with_assignments(pn, "", "", bin_, MAX_ROWS)
         if cat:
             all_rows = [r for r in all_rows if cat.lower() in str(r["Cat"] or "").lower()]
+        if pallet_f is not None:
+            all_rows = [r for r in all_rows if r["PalletID"] == pallet_f]
         if self.chk_no_pallet.isChecked():
             all_rows = [r for r in all_rows if r["PalletID"] is None]
         truncated    = len(all_rows) > MAX_ROWS
@@ -308,7 +334,7 @@ class InventoryScreen(QWidget):
     def _clear_filter(self):
         self.txt_pn.clear()
         self.txt_cat.clear()
-        for cmb in (self.cmb_bin, self.cmb_storage):
+        for cmb in (self.cmb_bin, self.cmb_filter_pallet):
             cmb.blockSignals(True); cmb.setCurrentIndex(0); cmb.blockSignals(False)
         self.chk_no_pallet.blockSignals(True)
         self.chk_no_pallet.setChecked(False)
@@ -346,7 +372,7 @@ class InventoryScreen(QWidget):
             msg += f"  ← מוצגים {MAX_ROWS} הראשונים בלבד"
         self.lbl_count.setText(msg)
 
-        key_counts = Counter((row["Pn"], row["Storage"]) for row in rows)
+        key_counts = Counter((row["Pn"], row["Bin"]) for row in rows)
         dup_keys   = {k for k, cnt in key_counts.items() if cnt > 1}
 
         self.table.blockSignals(True)
@@ -377,12 +403,16 @@ class InventoryScreen(QWidget):
                 chk_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.table.setItem(r, COL_CHK, chk_item)
 
-            self.table.setItem(r, COL_PN,   mk(row["Pn"],   bold=True))
-            self.table.setItem(r, COL_CAT,  mk(row["Cat"]))
-            self.table.setItem(r, COL_BIN,  mk(row["Bin"]))
-            self.table.setItem(r, COL_STO,  mk(row["Storage"]))
-            self.table.setItem(r, COL_AREA, mk(row["Area"]))
-            self.table.setItem(r, COL_DEST, mk(row["DestArea"]))
+            qty_val = row["Qty"]
+            qty_str = (str(int(qty_val)) if qty_val == int(qty_val) else str(qty_val)) if qty_val is not None else ""
+
+            self.table.setItem(r, COL_PN,    mk(row["Pn"],  bold=True))
+            self.table.setItem(r, COL_CAT,   mk(row["Cat"]))
+            self.table.setItem(r, COL_BATCH, mk(row["Batch"]))
+            self.table.setItem(r, COL_WBS,   mk(row["WBS"]))
+            self.table.setItem(r, COL_QTY,   mk(qty_str))
+            self.table.setItem(r, COL_BIN,   mk(row["Bin"]))
+            self.table.setItem(r, COL_DEST,  mk(row["DestArea"]))
 
             # ── Toggle switch ─────────────────────────────────────────────────
             toggle = ToggleSwitch(is_stock)
@@ -395,7 +425,7 @@ class InventoryScreen(QWidget):
             self.table.setItem(r, COL_PAL, mk(str(pallet_id) if pallet_id is not None else "–"))
 
             # ── Indicator ❗ ───────────────────────────────────────────────────
-            is_dup = (row["Pn"], row["Storage"]) in dup_keys
+            is_dup = (row["Pn"], row["Bin"]) in dup_keys
             if is_dup:
                 ind = mk("❗")
                 ind.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
@@ -499,17 +529,16 @@ class InventoryScreen(QWidget):
             return
         row     = self._rows[r]
         pn      = row["Pn"]
-        storage = row["Storage"]
+        bin_    = row["Bin"]
         dups    = [i for i, rd in enumerate(self._rows)
-                   if rd["Pn"] == pn and rd["Storage"] == storage]
-        lines   = [f"פריט: {pn}  |  אתר איחסון: {storage}",
+                   if rd["Pn"] == pn and rd["Bin"] == bin_]
+        lines   = [f"פריט: {pn}  |  Bin: {bin_}",
                    f"מספר שורות זהות: {len(dups)}"]
         for i in dups:
             rd      = self._rows[i]
             pid     = rd["PalletID"]
-            bin_val = rd["Bin"] or "–"
             pal_str = f"משטח: {pid}" if pid is not None else "ללא משטח"
-            lines.append(f"  • Bin: {bin_val}  |  {pal_str}")
+            lines.append(f"  • {pal_str}")
         QMessageBox.information(self, "חיווי כפילויות", "\n".join(lines))
 
     # ── Public refresh ────────────────────────────────────────────────────────
