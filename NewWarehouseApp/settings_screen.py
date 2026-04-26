@@ -1,4 +1,9 @@
 import os
+from datetime import datetime
+
+# SampleData folder sits one level above this app directory
+SAMPLE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "SampleData")
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
@@ -70,28 +75,66 @@ class SettingsScreen(QWidget):
 
     def _data_tab(self):
         w = QWidget()
-        lay = QVBoxLayout(w); lay.setContentsMargins(24, 24, 24, 24); lay.setSpacing(16)
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(20, 20, 20, 20)
+        lay.setSpacing(16)
 
-        btn_inv = QPushButton("📂  טעינת קובץ מלאי")
-        btn_inv.setMinimumHeight(52)
-        btn_inv.clicked.connect(self._import_pallets)
-        lay.addWidget(btn_inv)
-        self.lbl_last_import = QLabel(f"ייבוא אחרון: {db.get_setting('last_pallet_import') or 'לא בוצע'}")
-        self.lbl_last_import.setObjectName("status_label")
-        lay.addWidget(self.lbl_last_import)
+        # ── 1. Load locations ─────────────────────────────────────────────
+        grp1 = QGroupBox("1.  טעינת איתורים")
+        g1 = QVBoxLayout(grp1); g1.setSpacing(10)
+        sample_loc = os.path.join(SAMPLE_DIR, "newBIns.xlsx")
+        hint1 = QLabel(
+            f"קובץ: newBIns.xlsx{'  ✓ נמצא' if os.path.exists(sample_loc) else '  (לא נמצא – תיפתח חלונית בחירה)'}\n"
+            "האיתורים יופיעו בתיבת הבחירה של האיתור לצימוד"
+        )
+        hint1.setStyleSheet("color:#616161; font-size:12px;")
+        g1.addWidget(hint1)
+        btn1 = QPushButton("📍  טען איתורים")
+        btn1.setMinimumHeight(54)
+        btn1.clicked.connect(self._load_locations_smart)
+        g1.addWidget(btn1)
+        self.lbl_loc_status = QLabel(
+            f"טעינה אחרונה: {db.get_setting('last_load_date') or 'לא בוצע'}"
+        )
+        self.lbl_loc_status.setObjectName("status_label")
+        g1.addWidget(self.lbl_loc_status)
+        lay.addWidget(grp1)
 
-        btn_pal = QPushButton("📋  קליטת רשימת משטחים")
-        btn_pal.setMinimumHeight(52)
-        btn_pal.clicked.connect(self._load_pallet_codes)
-        lay.addWidget(btn_pal)
-        self.lbl_pallet_codes = QLabel(f"ייבוא אחרון: {db.get_setting('last_pallet_import') or 'לא בוצע'}")
-        self.lbl_pallet_codes.setObjectName("status_label")
-        lay.addWidget(self.lbl_pallet_codes)
+        # ── 2. Load pallet codes ──────────────────────────────────────────
+        grp2 = QGroupBox("2.  טעינת משטחים")
+        g2 = QVBoxLayout(grp2); g2.setSpacing(10)
+        sample_pal = os.path.join(SAMPLE_DIR, "Pallets.xlsx")
+        hint2 = QLabel(
+            f"קובץ: Pallets.xlsx{'  ✓ נמצא' if os.path.exists(sample_pal) else '  (לא נמצא – תיפתח חלונית בחירה)'}\n"
+            "המשטחים יופיעו בתיבת הבחירה לצימוד"
+        )
+        hint2.setStyleSheet("color:#616161; font-size:12px;")
+        g2.addWidget(hint2)
+        btn2 = QPushButton("📋  טען משטחים")
+        btn2.setMinimumHeight(54)
+        btn2.clicked.connect(self._load_pallets_smart)
+        g2.addWidget(btn2)
+        self.lbl_pal_status = QLabel(
+            f"טעינה אחרונה: {db.get_setting('last_pallet_import') or 'לא בוצע'}"
+        )
+        self.lbl_pal_status.setObjectName("status_label")
+        g2.addWidget(self.lbl_pal_status)
+        lay.addWidget(grp2)
 
-        btn_exp = QPushButton("💾  יצוא שיוכים")
-        btn_exp.setMinimumHeight(52)
-        btn_exp.clicked.connect(self._export_assignments)
-        lay.addWidget(btn_exp)
+        # ── 3. Export pairings ────────────────────────────────────────────
+        grp3 = QGroupBox("3.  ייצוא נתונים למיזוג")
+        g3 = QVBoxLayout(grp3); g3.setSpacing(10)
+        hint3 = QLabel(
+            "יצא את כל הצמדים לקובץ Excel.\n"
+            "הקובץ מיועד לשימוש עם הקובץ מהמחסן הישן בכלי המיזוג."
+        )
+        hint3.setStyleSheet("color:#616161; font-size:12px;")
+        g3.addWidget(hint3)
+        btn3 = QPushButton("💾  ייצוא נתונים")
+        btn3.setMinimumHeight(54)
+        btn3.clicked.connect(self._export_assignments)
+        g3.addWidget(btn3)
+        lay.addWidget(grp3)
 
         lay.addStretch()
         return w
@@ -248,14 +291,15 @@ class SettingsScreen(QWidget):
         if path:
             target.setText(path)
 
-    def _load_locations(self):
-        path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ איתורים Excel", "", "Excel Files (*.xlsx *.xls)")
-        if not path:
-            return
-        archive_dir = db.get_setting("archive_path")
-        existing = db.get_dest_areas()
-        if existing:
-            pass  # minimal export for locations not needed (small data)
+    def _load_locations_smart(self):
+        """Load locations – uses SampleData/newBIns.xlsx if present, else file dialog."""
+        path = os.path.join(SAMPLE_DIR, "newBIns.xlsx")
+        if not os.path.exists(path):
+            path, _ = QFileDialog.getOpenFileName(
+                self, "בחר קובץ איתורים (newBIns.xlsx)", "", "Excel Files (*.xlsx *.xls)"
+            )
+            if not path:
+                return
         try:
             rows = xh.load_locations_xlsx(path)
         except Exception as e:
@@ -263,45 +307,21 @@ class SettingsScreen(QWidget):
             return
         db.clear_locations()
         db.bulk_insert_locations(rows)
-        db.set_setting("last_load_date", __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        db.set_setting("last_load_date", now)
         db.log(self.username, "LOAD_LOCATIONS", f"נטענו {len(rows)} איתורים מ: {path}")
+        self.lbl_loc_status.setText(f"טעינה אחרונה: {now}")
         QMessageBox.information(self, "הצלחה", f"נטענו {len(rows)} איתורים ✓")
 
-    # ── Archive helper ────────────────────────────────────────────────────────
-
-    def _do_archive(self, prefix: str) -> str | None:
-        rows = db.get_all_pallets_export()
-        if not rows:
-            return None
-        arc_dir = db.get_setting(
-            "archive_path",
-            os.path.join(os.path.dirname(db.DB_PATH), "archive"),
-        )
-        path = xh.archive_path(arc_dir, prefix)
-        xh.export_pallets_xlsx(rows, path)
-        return path
-
-    def _import_pallets(self):
-        path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ משטחים Excel", "", "Excel Files (*.xlsx *.xls)")
-        if not path:
-            return
-        try:
-            rows = xh.load_pallet_xlsx(path)
-        except Exception as e:
-            QMessageBox.critical(self, "שגיאה", str(e))
-            return
-        db.import_pallets_from_rows(rows, self.username)
-        self.lbl_last_import.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
-        arc = self._do_archive("Import_FinalOutput")
-        msg = f"יובאו {len(rows)} שורות משטחים ✓"
-        if arc:
-            msg += f"\nגיבוי ארכיון:\n{arc}"
-        QMessageBox.information(self, "הצלחה", msg)
-
-    def _load_pallet_codes(self):
-        path, _ = QFileDialog.getOpenFileName(self, "בחר קובץ קודי משטחים Excel", "", "Excel Files (*.xlsx *.xls)")
-        if not path:
-            return
+    def _load_pallets_smart(self):
+        """Load pallet codes – uses SampleData/Pallets.xlsx if present, else file dialog."""
+        path = os.path.join(SAMPLE_DIR, "Pallets.xlsx")
+        if not os.path.exists(path):
+            path, _ = QFileDialog.getOpenFileName(
+                self, "בחר קובץ משטחים (Pallets.xlsx)", "", "Excel Files (*.xlsx *.xls)"
+            )
+            if not path:
+                return
         try:
             codes = xh.load_pallet_codes_xlsx(path)
         except Exception as e:
@@ -311,18 +331,9 @@ class SettingsScreen(QWidget):
             QMessageBox.warning(self, "אזהרה", "לא נמצאו קודי משטחים בקובץ")
             return
         db.bulk_insert_pallet_codes(codes, self.username)
-        self.lbl_pallet_codes.setText(f"ייבוא אחרון: {db.get_setting('last_pallet_import')}")
-        arc = self._do_archive("Import_PalletCodes")
-        msg = f"נטענו {len(codes)} קודי משטחים ✓"
-        if arc:
-            msg += f"\nגיבוי ארכיון:\n{arc}"
-        QMessageBox.information(self, "הצלחה", msg)
-
-    def _create_pallet_codes_sample(self):
-        export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
-        path = xh.archive_path(export_dir, "Pallets_Sample")
-        xh.create_pallet_codes_sample(path)
-        QMessageBox.information(self, "הצלחה", f"קובץ דוגמא נוצר:\n{path}")
+        now = db.get_setting("last_pallet_import")
+        self.lbl_pal_status.setText(f"טעינה אחרונה: {now}")
+        QMessageBox.information(self, "הצלחה", f"נטענו {len(codes)} קודי משטחים ✓")
 
     def _export_assignments(self):
         export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
@@ -332,12 +343,8 @@ class SettingsScreen(QWidget):
             return
         out_path = xh.archive_path(export_dir, "NewWarehouse_PalletAssignments")
         xh.export_pallets_xlsx(rows, out_path)
-        arc = self._do_archive("Export_PalletAssignments")
         db.log(self.username, "EXPORT_ASSIGNMENTS", f"יוצא ל: {out_path}")
-        msg = f"קובץ יוצא:\n{out_path}"
-        if arc:
-            msg += f"\n\nגיבוי ארכיון:\n{arc}"
-        QMessageBox.information(self, "הצלחה", msg)
+        QMessageBox.information(self, "הצלחה", f"קובץ יוצא:\n{out_path}")
 
     def _reload_users_table(self):
         users = db.get_all_users()
