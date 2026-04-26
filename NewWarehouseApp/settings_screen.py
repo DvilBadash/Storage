@@ -279,10 +279,10 @@ class SettingsScreen(QWidget):
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _load_settings(self):
-        self.txt_wh_name.setText(db.get_setting("warehouse_name", "YYY"))
-        self.txt_export.setText(db.get_setting("export_path",   r"C:\Temp\New_WH_EXP"))
-        self.txt_archive.setText(db.get_setting("archive_path", r"C:\Temp\New_WH_Archive"))
-        theme = db.get_setting("theme", "light")
+        self.txt_wh_name.setText(db.get_setting("warehouse_name") or "YYY")
+        self.txt_export.setText(db.get_setting("export_path")     or r"C:\Temp\New_WH_EXP")
+        self.txt_archive.setText(db.get_setting("archive_path")   or r"C:\Temp\New_WH_Archive")
+        theme = db.get_setting("theme") or "light"
         self.cmb_theme.setCurrentIndex(0 if theme == "light" else 1)
 
     def _save_general(self):
@@ -339,7 +339,7 @@ class SettingsScreen(QWidget):
         QMessageBox.information(self, "הצלחה", f"נטענו {len(codes)} קודי משטחים ✓")
 
     def _export_assignments(self):
-        export_dir = db.get_setting("export_path", r"C:\Temp\New_WH_EXP")
+        export_dir = db.get_setting("export_path") or r"C:\Temp\New_WH_EXP"
         rows = db.get_all_pallets_export()
         if not rows:
             QMessageBox.warning(self, "אזהרה", "אין נתונים לייצוא")

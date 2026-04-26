@@ -319,10 +319,10 @@ class SettingsScreen(QWidget):
     # ── Settings helpers ──────────────────────────────────────────────────────
 
     def _load_settings(self):
-        self.txt_wh_name.setText(db.get_setting("warehouse_name", "XXX"))
-        self.txt_export.setText(db.get_setting("export_path",   r"C:\Temp\Old_WH_EXP"))
-        self.txt_archive.setText(db.get_setting("archive_path", r"C:\Temp\Old_WH_Archive"))
-        theme = db.get_setting("theme", "light")
+        self.txt_wh_name.setText(db.get_setting("warehouse_name") or "XXX")
+        self.txt_export.setText(db.get_setting("export_path")     or r"C:\Temp\Old_WH_EXP")
+        self.txt_archive.setText(db.get_setting("archive_path")   or r"C:\Temp\Old_WH_Archive")
+        theme = db.get_setting("theme") or "light"
         self.cmb_theme.setCurrentIndex(0 if theme == "light" else 1)
 
     def _save_general(self):
@@ -349,7 +349,7 @@ class SettingsScreen(QWidget):
         if not path:
             return
 
-        archive_dir = db.get_setting("archive_path", r"C:\Temp\Old_WH_Archive")
+        archive_dir = db.get_setting("archive_path") or r"C:\Temp\Old_WH_Archive"
         # Export existing to archive
         existing = db.get_all_inventory_with_assignments()
         if existing:
@@ -373,7 +373,7 @@ class SettingsScreen(QWidget):
         QMessageBox.information(self, "הצלחה", f"נטענו {len(rows)} פריטים בהצלחה ✓")
 
     def _export_inventory(self):
-        export_dir = db.get_setting("export_path", r"C:\Temp\Old_WH_EXP")
+        export_dir = db.get_setting("export_path") or r"C:\Temp\Old_WH_EXP"
         arc_path   = xh.archive_path(export_dir, "InventoryExport")
         rows = db.get_all_inventory_with_assignments()
         if not rows:
@@ -435,7 +435,7 @@ class SettingsScreen(QWidget):
         QMessageBox.information(self, "בוצע", "כל הנתונים נמחקו ✓")
 
     def _create_pallet_sample(self):
-        export_dir = db.get_setting("export_path", r"C:\Temp\Old_WH_EXP")
+        export_dir = db.get_setting("export_path") or r"C:\Temp\Old_WH_EXP"
         path = xh.archive_path(export_dir, "PalletImport_Sample")
         xh.create_pallet_import_sample(path)
         QMessageBox.information(self, "הצלחה", f"קובץ דוגמא נוצר:\n{path}")
