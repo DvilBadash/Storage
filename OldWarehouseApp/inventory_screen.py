@@ -184,7 +184,7 @@ class InventoryScreen(QWidget):
         # ── Table ─────────────────────────────────────────────────────────────
         self.table = QTableWidget(0, NUM_COLS)
         self.table.setHorizontalHeaderLabels([
-            "✓", "PN", "מס' קטלוגי", "סדרה", "WBS", "כמות",
+            "✓", "מס' קטלוגי", "PN", "סדרה", "WBS", "כמות",
             "איתור", "אזור\nיעד", "ממוקם", "משטח\nמשויך", "חיווי",
         ])
         hh = self.table.horizontalHeader()
