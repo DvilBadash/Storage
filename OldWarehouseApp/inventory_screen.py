@@ -455,17 +455,19 @@ class InventoryScreen(QWidget):
                 ind = mk("")
             self.table.setItem(r, COL_IND, ind)
 
-            # ── Updated qty (editable) ─────────────────────────────────────────
+            # ── Updated qty (click to edit) ────────────────────────────────────
             upd_qty = row["UpdatedQty"]
             upd_str = ""
             if upd_qty is not None:
                 upd_str = str(int(upd_qty)) if upd_qty == int(upd_qty) else str(upd_qty)
             upd_item = QTableWidgetItem(upd_str)
             upd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            upd_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            upd_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             if upd_qty is not None:
                 upd_item.setBackground(QBrush(QColor("#FFF9C4")))
                 upd_item.setFont(QFont("Segoe UI", -1, QFont.Weight.Bold))
+            else:
+                upd_item.setToolTip("לחץ לעדכון כמות")
             self.table.setItem(r, COL_UPD_QTY, upd_item)
 
             # ── Notes indicator ────────────────────────────────────────────────
@@ -502,44 +504,16 @@ class InventoryScreen(QWidget):
     # ── Item change (checkbox guard) ──────────────────────────────────────────
 
     def _on_item_changed(self, item: QTableWidgetItem):
-        col = item.column()
-        if col == COL_CHK:
-            if item.checkState() == Qt.CheckState.Checked:
-                toggle = self.table.cellWidget(item.row(), COL_STOCK)
-                if toggle and not toggle.isChecked():
-                    self.table.blockSignals(True)
-                    item.setCheckState(Qt.CheckState.Unchecked)
-                    self.table.blockSignals(False)
-                    return
-            self._update_selection_label()
-        elif col == COL_UPD_QTY:
-            r = item.row()
-            if r >= len(self._rows):
+        if item.column() != COL_CHK:
+            return
+        if item.checkState() == Qt.CheckState.Checked:
+            toggle = self.table.cellWidget(item.row(), COL_STOCK)
+            if toggle and not toggle.isChecked():
+                self.table.blockSignals(True)
+                item.setCheckState(Qt.CheckState.Unchecked)
+                self.table.blockSignals(False)
                 return
-            txt = item.text().strip()
-            inv_id = self._rows[r]["InventoryID"]
-            if txt == "":
-                db.set_updated_qty(inv_id, None, self.username)
-                self.table.blockSignals(True)
-                item.setBackground(QBrush(QColor("transparent")))
-                f = item.font(); f.setBold(False); item.setFont(f)
-                self.table.blockSignals(False)
-                self._rows[r]["UpdatedQty"] = None
-            else:
-                try:
-                    qty = float(txt.replace(",", "."))
-                except ValueError:
-                    self.table.blockSignals(True)
-                    prev = self._rows[r]["UpdatedQty"]
-                    item.setText(str(int(prev)) if prev is not None and prev == int(prev) else (str(prev) if prev is not None else ""))
-                    self.table.blockSignals(False)
-                    return
-                db.set_updated_qty(inv_id, qty, self.username)
-                self.table.blockSignals(True)
-                item.setBackground(QBrush(QColor("#FFF9C4")))
-                f = item.font(); f.setBold(True); item.setFont(f)
-                self.table.blockSignals(False)
-                self._rows[r]["UpdatedQty"] = qty
+        self._update_selection_label()
 
     def _on_item_clicked(self, item: QTableWidgetItem):
         col = item.column()
@@ -547,6 +521,8 @@ class InventoryScreen(QWidget):
             self._show_dup_popup(item.row())
         elif col == COL_NOTES:
             self._edit_notes(item.row())
+        elif col == COL_UPD_QTY:
+            self._edit_updated_qty(item.row())
 
     # ── Selection helpers ─────────────────────────────────────────────────────
 
@@ -638,6 +614,69 @@ class InventoryScreen(QWidget):
             pal_str = f"משטח: {pid}" if pid is not None else "ללא משטח"
             lines.append(f"  • {pal_str}")
         QMessageBox.information(self, "חיווי כפילויות", "\n".join(lines))
+
+    # ── Updated qty dialog ────────────────────────────────────────────────────
+
+    def _edit_updated_qty(self, r: int):
+        if r >= len(self._rows):
+            return
+        row    = self._rows[r]
+        inv_id = row["InventoryID"]
+        pn     = row["Pn"] or ""
+        cur    = row["UpdatedQty"]
+        cur_str = (str(int(cur)) if cur is not None and cur == int(cur) else str(cur)) if cur is not None else ""
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"כמות מעודכנת – {pn}")
+        dlg.setMinimumWidth(320)
+        dlg.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(f"מק\"ט: {row['Cat'] or ''}  |  PN: {pn}  |  כמות מקורית: {row['Qty'] or ''}")
+        lbl.setStyleSheet("font-size:12px; color:#616161;")
+        lay.addWidget(lbl)
+        txt = QLineEdit(cur_str)
+        txt.setMinimumHeight(38)
+        txt.setPlaceholderText("הכנס כמות (ריק = נקה עדכון)")
+        txt.selectAll()
+        lay.addWidget(txt)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        btns.button(QDialogButtonBox.StandardButton.Save).setText("שמור")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("ביטול")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        txt.returnPressed.connect(dlg.accept)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        raw = txt.text().strip()
+        cell = self.table.item(r, COL_UPD_QTY)
+        if raw == "":
+            db.set_updated_qty(inv_id, None, self.username)
+            self._rows[r]["UpdatedQty"] = None
+            if cell:
+                self.table.blockSignals(True)
+                cell.setText("")
+                cell.setBackground(QBrush(QColor("transparent")))
+                f = cell.font(); f.setBold(False); cell.setFont(f)
+                cell.setToolTip("לחץ לעדכון כמות")
+                self.table.blockSignals(False)
+        else:
+            try:
+                qty = float(raw.replace(",", "."))
+            except ValueError:
+                QMessageBox.warning(self, "שגיאה", f"ערך לא חוקי: {raw}")
+                return
+            db.set_updated_qty(inv_id, qty, self.username)
+            self._rows[r]["UpdatedQty"] = qty
+            disp = str(int(qty)) if qty == int(qty) else str(qty)
+            if cell:
+                self.table.blockSignals(True)
+                cell.setText(disp)
+                cell.setBackground(QBrush(QColor("#FFF9C4")))
+                f = cell.font(); f.setBold(True); cell.setFont(f)
+                cell.setToolTip("")
+                self.table.blockSignals(False)
 
     # ── Notes dialog ─────────────────────────────────────────────────────────
 
@@ -753,7 +792,7 @@ class InventoryScreen(QWidget):
         html += "</table></body></html>"
 
         from PyQt6.QtGui import QTextDocument, QPageLayout
-        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer = QPrinter()
         printer.setPageOrientation(QPageLayout.Orientation.Landscape)
         pd = QPrintDialog(printer, self)
         if pd.exec() != QPrintDialog.DialogCode.Accepted:
