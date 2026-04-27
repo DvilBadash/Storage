@@ -2,41 +2,46 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QComboBox, QTableWidget, QTableWidgetItem,
     QFrame, QHeaderView, QAbstractItemView, QCompleter, QMessageBox, QCheckBox,
+    QDialog, QTextEdit, QDialogButtonBox, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QTimer
 from PyQt6.QtGui import QFont, QColor, QBrush, QPainter, QPainterPath
+from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
 from collections import Counter
 import database as db
 
 MAX_ROWS = 500
 
 # ── Column indices (RTL: col 0 = rightmost on screen) ────────────────────────
-COL_CHK   = 0   # ✓ בחירה
-COL_PN    = 1   # PN / מספר חלק
-COL_CAT   = 2   # מס' קטלוגי (חומר)
-COL_BATCH = 3   # סדרה (Batch)
-COL_WBS   = 4   # WBS
-COL_QTY   = 5   # כמות (Qty)
-COL_BIN   = 6   # איתור (Bin)
-COL_DEST  = 7   # אזור יעד (DestArea)
-COL_STOCK = 8   # ממוקם – toggle switch
-COL_PAL   = 9   # משטח משויך
-COL_IND   = 10  # חיווי – ❗ indicator
-NUM_COLS  = 11
+COL_CHK     = 0   # ✓ בחירה
+COL_PN      = 1   # PN / מספר חלק
+COL_CAT     = 2   # מס' קטלוגי (חומר)
+COL_BATCH   = 3   # סדרה (Batch)
+COL_WBS     = 4   # WBS
+COL_QTY     = 5   # כמות (Qty)
+COL_BIN     = 6   # איתור (Bin)
+COL_DEST    = 7   # אזור יעד (DestArea)
+COL_STOCK   = 8   # ממוקם – toggle switch
+COL_PAL     = 9   # משטח משויך
+COL_IND     = 10  # חיווי – ❗ indicator
+COL_UPD_QTY = 11  # כמות מעודכנת (עריכה)
+COL_NOTES   = 12  # הערות – 📝 indicator
+NUM_COLS    = 13
 
 COLOR_IND = QColor("#D32F2F")
 
 # Maps column index → row dict key for sorting (widget columns excluded)
 _SORT_KEY = {
-    COL_PN:    lambda r: str(r["Pn"]      or "").lower(),
-    COL_CAT:   lambda r: str(r["Cat"]     or "").lower(),
-    COL_BATCH: lambda r: str(r["Batch"]   or "").lower(),
-    COL_WBS:   lambda r: str(r["WBS"]     or "").lower(),
-    COL_QTY:   lambda r: float(r["Qty"]   or 0),
-    COL_BIN:   lambda r: str(r["Bin"]     or "").lower(),
-    COL_DEST:  lambda r: str(r["DestArea"]or "").lower(),
-    COL_STOCK: lambda r: int(r["IsInStock"] or 0),
-    COL_PAL:   lambda r: (str(r["PalletID"]) if r["PalletID"] is not None else ""),
+    COL_PN:      lambda r: str(r["Pn"]      or "").lower(),
+    COL_CAT:     lambda r: str(r["Cat"]     or "").lower(),
+    COL_BATCH:   lambda r: str(r["Batch"]   or "").lower(),
+    COL_WBS:     lambda r: str(r["WBS"]     or "").lower(),
+    COL_QTY:     lambda r: float(r["Qty"]   or 0),
+    COL_BIN:     lambda r: str(r["Bin"]     or "").lower(),
+    COL_DEST:    lambda r: str(r["DestArea"]or "").lower(),
+    COL_STOCK:   lambda r: int(r["IsInStock"] or 0),
+    COL_PAL:     lambda r: (str(r["PalletID"]) if r["PalletID"] is not None else ""),
+    COL_UPD_QTY: lambda r: float(r["UpdatedQty"] if r["UpdatedQty"] is not None else (r["Qty"] or 0)),
 }
 
 
@@ -186,19 +191,22 @@ class InventoryScreen(QWidget):
         self.table.setHorizontalHeaderLabels([
             "✓", "מס' קטלוגי", "PN", "סדרה", "WBS", "כמות",
             "איתור", "אזור\nיעד", "ממוקם", "משטח\nמשויך", "חיווי",
+            "כמות\nמעודכנת", "הערות",
         ])
         hh = self.table.horizontalHeader()
-        hh.setSectionResizeMode(COL_CHK,   QHeaderView.ResizeMode.Fixed);        hh.resizeSection(COL_CHK,   36)
-        hh.setSectionResizeMode(COL_PN,    QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_PN,    95)
-        hh.setSectionResizeMode(COL_CAT,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_CAT,   110)
-        hh.setSectionResizeMode(COL_BATCH, QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_BATCH, 90)
-        hh.setSectionResizeMode(COL_WBS,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_WBS,   90)
-        hh.setSectionResizeMode(COL_QTY,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_QTY,   65)
-        hh.setSectionResizeMode(COL_BIN,   QHeaderView.ResizeMode.Stretch)
-        hh.setSectionResizeMode(COL_DEST,  QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_DEST,  80)
-        hh.setSectionResizeMode(COL_STOCK, QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_STOCK, 100)
-        hh.setSectionResizeMode(COL_PAL,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_PAL,   90)
-        hh.setSectionResizeMode(COL_IND,   QHeaderView.ResizeMode.Fixed);        hh.resizeSection(COL_IND,   52)
+        hh.setSectionResizeMode(COL_CHK,     QHeaderView.ResizeMode.Fixed);        hh.resizeSection(COL_CHK,     36)
+        hh.setSectionResizeMode(COL_PN,      QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_PN,      95)
+        hh.setSectionResizeMode(COL_CAT,     QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_CAT,     110)
+        hh.setSectionResizeMode(COL_BATCH,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_BATCH,   90)
+        hh.setSectionResizeMode(COL_WBS,     QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_WBS,     90)
+        hh.setSectionResizeMode(COL_QTY,     QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_QTY,     65)
+        hh.setSectionResizeMode(COL_BIN,     QHeaderView.ResizeMode.Stretch)
+        hh.setSectionResizeMode(COL_DEST,    QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_DEST,    80)
+        hh.setSectionResizeMode(COL_STOCK,   QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_STOCK,   100)
+        hh.setSectionResizeMode(COL_PAL,     QHeaderView.ResizeMode.Interactive);  hh.resizeSection(COL_PAL,     90)
+        hh.setSectionResizeMode(COL_IND,     QHeaderView.ResizeMode.Fixed);        hh.resizeSection(COL_IND,     52)
+        hh.setSectionResizeMode(COL_UPD_QTY, QHeaderView.ResizeMode.Interactive); hh.resizeSection(COL_UPD_QTY, 80)
+        hh.setSectionResizeMode(COL_NOTES,   QHeaderView.ResizeMode.Fixed);        hh.resizeSection(COL_NOTES,   52)
         hh.setMinimumSectionSize(36)
         hh.setSortIndicatorShown(True)
         hh.sectionClicked.connect(self._on_header_clicked)
@@ -249,6 +257,14 @@ class InventoryScreen(QWidget):
         assign_lay.addWidget(self.btn_detach)
         assign_lay.addStretch()
         assign_lay.addWidget(self.lbl_selected)
+
+        btn_print = QPushButton("🖨  הדפסה")
+        btn_print.setMinimumHeight(36)
+        btn_print.setFixedWidth(110)
+        btn_print.setObjectName("btn_secondary")
+        btn_print.clicked.connect(self._print_data)
+        assign_lay.addWidget(btn_print)
+
         root.addWidget(assign_frame)
 
         legend = QLabel("** מקרא חיוויים **\n❗ = קיים פריט זהה (PN + Bin) במספר שורות")
@@ -330,8 +346,8 @@ class InventoryScreen(QWidget):
             all_rows = [r for r in all_rows if r["PalletID"] == pallet_f]
         if self.chk_no_pallet.isChecked():
             all_rows = [r for r in all_rows if r["PalletID"] is None]
-        truncated    = len(all_rows) > MAX_ROWS
-        self._rows   = list(all_rows[:MAX_ROWS])
+        truncated  = len(all_rows) > MAX_ROWS
+        self._rows = [{k: r[k] for k in r.keys()} for r in all_rows[:MAX_ROWS]]
         self._apply_sort()
         self._refresh_pallet_combo()
         self._populate_table(truncated)
@@ -439,6 +455,28 @@ class InventoryScreen(QWidget):
                 ind = mk("")
             self.table.setItem(r, COL_IND, ind)
 
+            # ── Updated qty (editable) ─────────────────────────────────────────
+            upd_qty = row["UpdatedQty"]
+            upd_str = ""
+            if upd_qty is not None:
+                upd_str = str(int(upd_qty)) if upd_qty == int(upd_qty) else str(upd_qty)
+            upd_item = QTableWidgetItem(upd_str)
+            upd_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            upd_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEditable)
+            if upd_qty is not None:
+                upd_item.setBackground(QBrush(QColor("#FFF9C4")))
+                upd_item.setFont(QFont("Segoe UI", -1, QFont.Weight.Bold))
+            self.table.setItem(r, COL_UPD_QTY, upd_item)
+
+            # ── Notes indicator ────────────────────────────────────────────────
+            notes_val = row["Notes"] or ""
+            notes_item = QTableWidgetItem("📝" if notes_val else "")
+            notes_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            notes_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            if notes_val:
+                notes_item.setToolTip(notes_val[:120] + ("…" if len(notes_val) > 120 else ""))
+            self.table.setItem(r, COL_NOTES, notes_item)
+
             self.table.setRowHeight(r, 46)
 
         self.table.blockSignals(False)
@@ -464,20 +502,51 @@ class InventoryScreen(QWidget):
     # ── Item change (checkbox guard) ──────────────────────────────────────────
 
     def _on_item_changed(self, item: QTableWidgetItem):
-        if item.column() != COL_CHK:
-            return
-        if item.checkState() == Qt.CheckState.Checked:
-            toggle = self.table.cellWidget(item.row(), COL_STOCK)
-            if toggle and not toggle.isChecked():
-                self.table.blockSignals(True)
-                item.setCheckState(Qt.CheckState.Unchecked)
-                self.table.blockSignals(False)
+        col = item.column()
+        if col == COL_CHK:
+            if item.checkState() == Qt.CheckState.Checked:
+                toggle = self.table.cellWidget(item.row(), COL_STOCK)
+                if toggle and not toggle.isChecked():
+                    self.table.blockSignals(True)
+                    item.setCheckState(Qt.CheckState.Unchecked)
+                    self.table.blockSignals(False)
+                    return
+            self._update_selection_label()
+        elif col == COL_UPD_QTY:
+            r = item.row()
+            if r >= len(self._rows):
                 return
-        self._update_selection_label()
+            txt = item.text().strip()
+            inv_id = self._rows[r]["InventoryID"]
+            if txt == "":
+                db.set_updated_qty(inv_id, None, self.username)
+                self.table.blockSignals(True)
+                item.setBackground(QBrush(QColor("transparent")))
+                f = item.font(); f.setBold(False); item.setFont(f)
+                self.table.blockSignals(False)
+                self._rows[r]["UpdatedQty"] = None
+            else:
+                try:
+                    qty = float(txt.replace(",", "."))
+                except ValueError:
+                    self.table.blockSignals(True)
+                    prev = self._rows[r]["UpdatedQty"]
+                    item.setText(str(int(prev)) if prev is not None and prev == int(prev) else (str(prev) if prev is not None else ""))
+                    self.table.blockSignals(False)
+                    return
+                db.set_updated_qty(inv_id, qty, self.username)
+                self.table.blockSignals(True)
+                item.setBackground(QBrush(QColor("#FFF9C4")))
+                f = item.font(); f.setBold(True); item.setFont(f)
+                self.table.blockSignals(False)
+                self._rows[r]["UpdatedQty"] = qty
 
     def _on_item_clicked(self, item: QTableWidgetItem):
-        if item.column() == COL_IND and item.text() == "❗":
+        col = item.column()
+        if col == COL_IND and item.text() == "❗":
             self._show_dup_popup(item.row())
+        elif col == COL_NOTES:
+            self._edit_notes(item.row())
 
     # ── Selection helpers ─────────────────────────────────────────────────────
 
@@ -545,6 +614,129 @@ class InventoryScreen(QWidget):
             pal_str = f"משטח: {pid}" if pid is not None else "ללא משטח"
             lines.append(f"  • {pal_str}")
         QMessageBox.information(self, "חיווי כפילויות", "\n".join(lines))
+
+    # ── Notes dialog ─────────────────────────────────────────────────────────
+
+    def _edit_notes(self, r: int):
+        if r >= len(self._rows):
+            return
+        row    = self._rows[r]
+        inv_id = row["InventoryID"]
+        pn     = row["Pn"] or ""
+        dlg    = QDialog(self)
+        dlg.setWindowTitle(f"הערה – {pn}")
+        dlg.setMinimumSize(420, 220)
+        dlg.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        lay = QVBoxLayout(dlg)
+        lbl = QLabel(f"מק\"ט: {row['Cat'] or ''}  |  PN: {pn}  |  Bin: {row['Bin'] or ''}")
+        lbl.setStyleSheet("font-size:12px; color:#616161;")
+        lay.addWidget(lbl)
+        txt = QTextEdit()
+        txt.setPlainText(row["Notes"] or "")
+        txt.setMinimumHeight(100)
+        lay.addWidget(txt)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        btns.button(QDialogButtonBox.StandardButton.Save).setText("שמור")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("ביטול")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        new_note = txt.toPlainText().strip()
+        db.set_item_notes(inv_id, new_note, self.username)
+        self._rows[r]["Notes"] = new_note or None
+        notes_item = self.table.item(r, COL_NOTES)
+        if notes_item:
+            self.table.blockSignals(True)
+            notes_item.setText("📝" if new_note else "")
+            notes_item.setToolTip(new_note[:120] + ("…" if len(new_note) > 120 else "") if new_note else "")
+            self.table.blockSignals(False)
+
+    # ── Print ─────────────────────────────────────────────────────────────────
+
+    def _print_data(self):
+        pallets = db.get_pallets()
+        dlg = QDialog(self)
+        dlg.setWindowTitle("בחר משטח להדפסה")
+        dlg.setMinimumWidth(320)
+        dlg.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel("בחר משטח:"))
+        cmb = QComboBox(); cmb.setMinimumHeight(36)
+        cmb.addItem("הכל (כל השורות המוצגות)", "__all__")
+        for p in pallets:
+            cmb.addItem(str(p["PalletID"]), p["PalletID"])
+        lay.addWidget(cmb)
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText("הדפס")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText("ביטול")
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        sel = cmb.currentData()
+        if sel == "__all__":
+            rows_to_print = self._rows
+        else:
+            rows_to_print = db.get_inventory_by_pallet(sel)
+            rows_to_print = [dict(r) for r in rows_to_print]
+
+        if not rows_to_print:
+            QMessageBox.information(self, "הדפסה", "אין נתונים להדפסה")
+            return
+
+        def safe_get(row, key):
+            try:
+                return row[key]
+            except (KeyError, IndexError):
+                return ""
+
+        fixed_cols = [
+            ("מס' קטלוגי", "Cat"), ("PN", "Pn"), ("סדרה", "Batch"),
+            ("WBS", "WBS"), ("כמות", "Qty"), ("איתור", "Bin"),
+            ("אזור יעד", "DestArea"), ("משטח", "PalletID"),
+            ("כמות מעודכנת", "UpdatedQty"), ("הערות", "Notes"),
+        ]
+
+        html  = """<html><head><meta charset="utf-8">
+        <style>
+          body { font-family: Arial, sans-serif; direction: rtl; font-size: 9pt; }
+          h2   { text-align: center; font-size: 11pt; margin-bottom: 6px; }
+          table { border-collapse: collapse; width: 100%; }
+          th { background: #1976D2; color: white; padding: 4px 6px; border: 1px solid #90A4AE; }
+          td { padding: 3px 6px; border: 1px solid #CFD8DC; }
+          tr:nth-child(even) { background: #F5F9FF; }
+          .upd { background: #FFF9C4; font-weight: bold; }
+        </style></head><body>"""
+        title = f"משטח: {sel}" if sel != "__all__" else "כל השורות המוצגות"
+        html += f"<h2>דוח מלאי – {title}</h2>"
+        html += "<table><tr>"
+        for hdr, _ in fixed_cols:
+            html += f"<th>{hdr}</th>"
+        html += "</tr>"
+        for row in rows_to_print:
+            upd_qty = safe_get(row, "UpdatedQty")
+            html += "<tr>"
+            for _, key in fixed_cols:
+                val = safe_get(row, key)
+                val = "" if val is None else str(val)
+                css = ' class="upd"' if key == "UpdatedQty" and upd_qty is not None else ""
+                html += f"<td{css}>{val}</td>"
+            html += "</tr>"
+        html += "</table></body></html>"
+
+        from PyQt6.QtGui import QTextDocument, QPageLayout
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+        pd = QPrintDialog(printer, self)
+        if pd.exec() != QPrintDialog.DialogCode.Accepted:
+            return
+        doc = QTextDocument()
+        doc.setHtml(html)
+        doc.print(printer)
 
     # ── Public refresh ────────────────────────────────────────────────────────
 

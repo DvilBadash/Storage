@@ -28,6 +28,8 @@ HEADER_FILL   = PatternFill("solid", fgColor="1976D2")
 HEADER_FONT   = Font(bold=True, color="FFFFFF", size=11)
 HEADER_ALIGN  = Alignment(horizontal="center", vertical="center")
 ALT_FILL      = PatternFill("solid", fgColor="F5F9FF")
+UPD_FILL      = PatternFill("solid", fgColor="FFF9C4")   # yellow — updated qty row
+UPD_QTY_FILL  = PatternFill("solid", fgColor="F9A825")   # orange — the updated qty cell
 THIN_BORDER   = Border(
     left=Side(style="thin", color="E0E0E0"),
     right=Side(style="thin", color="E0E0E0"),
@@ -100,18 +102,26 @@ def export_inventory_xlsx(rows, path: str):
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "InventoryOld"
-    all_cols = INVENTORY_COLUMNS + ["PalletID", "IsInStock", "AssignDate", "TargetBin"]
+    all_cols = INVENTORY_COLUMNS + ["UpdatedQty", "Notes", "PalletID", "IsInStock", "AssignDate", "TargetBin"]
     _style_header(ws, all_cols)
+    upd_qty_col_idx = all_cols.index("UpdatedQty") + 1
     for r_idx, row in enumerate(rows, 2):
-        fill = ALT_FILL if r_idx % 2 == 0 else None
+        keys = row.keys() if hasattr(row, "keys") else {}
+        upd_qty = row["UpdatedQty"] if "UpdatedQty" in keys else None
+        orig_qty = row["Qty"] if "Qty" in keys else None
+        has_update = upd_qty is not None and upd_qty != orig_qty
+        row_fill = UPD_FILL if has_update else (ALT_FILL if r_idx % 2 == 0 else None)
         for c_idx, col in enumerate(all_cols, 1):
-            val = row[col] if col in row.keys() else ""
+            val = row[col] if col in keys else ""
             if col == "IsInStock":
                 val = "כן" if val else "לא"
             cell = ws.cell(row=r_idx, column=c_idx, value=val)
             cell.border = THIN_BORDER
-            if fill:
-                cell.fill = fill
+            if c_idx == upd_qty_col_idx and has_update:
+                cell.fill = UPD_QTY_FILL
+                cell.font = Font(bold=True)
+            elif row_fill:
+                cell.fill = row_fill
     _auto_width(ws)
     wb.save(path)
 

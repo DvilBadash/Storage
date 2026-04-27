@@ -74,6 +74,8 @@ def init_db():
             ("UnitOfMeasure", "TEXT NOT NULL DEFAULT ''"),
             ("MultiLocation",  "TEXT NOT NULL DEFAULT ''"),
             ("IsInStock",      "INTEGER NOT NULL DEFAULT 0"),
+            ("UpdatedQty",     "REAL"),
+            ("Notes",          "TEXT"),
         ]:
             try:
                 c.execute(f"ALTER TABLE InventoryOld ADD COLUMN {col} {defn}")
@@ -263,7 +265,7 @@ def get_inventory_with_assignments(pn="", storage="", area="", bin_="",
     sql = """
         SELECT i.InventoryID, i.Cat, i.Pn, i.UnitOfMeasure, i.Batch, i.WBS,
                i.Storage, i.Area, i.Bin, i.DestArea, i.Qty, i.MultiLocation,
-               i.IsInStock,
+               i.IsInStock, i.UpdatedQty, i.Notes,
                pa.PalletID, pa.AssignDate
         FROM InventoryOld i
         LEFT JOIN PALLET_Assignment pa ON i.InventoryID = pa.InventoryID
@@ -287,6 +289,21 @@ def get_inventory_with_assignments(pn="", storage="", area="", bin_="",
 
 def get_inventory(pn="", storage="", area="", bin_=""):
     return get_inventory_with_assignments(pn, storage, area, bin_, limit=500)
+
+
+def set_updated_qty(inv_id: int, qty, user: str):
+    with get_conn() as c:
+        c.execute("UPDATE InventoryOld SET UpdatedQty=? WHERE InventoryID=?", (qty, inv_id))
+        c.commit()
+    log(user, "UPDATE_QTY", f"InventoryID={inv_id} UpdatedQty={qty}")
+
+
+def set_item_notes(inv_id: int, notes: str, user: str):
+    notes_val = notes.strip() if notes else None
+    with get_conn() as c:
+        c.execute("UPDATE InventoryOld SET Notes=? WHERE InventoryID=?", (notes_val, inv_id))
+        c.commit()
+    log(user, "UPDATE_NOTES", f"InventoryID={inv_id}")
 
 
 def get_distinct_values(col: str):
@@ -491,6 +508,20 @@ def get_all_inventory_with_assignments():
                FROM InventoryOld i
                LEFT JOIN PALLET_Assignment pa ON i.InventoryID = pa.InventoryID
                ORDER BY i.Pn, i.Batch"""
+        ).fetchall()
+
+
+def get_inventory_by_pallet(pallet_id: str):
+    with get_conn() as c:
+        return c.execute(
+            """SELECT i.InventoryID, i.Cat, i.Pn, i.Batch, i.WBS, i.Bin,
+                      i.DestArea, i.Qty, i.UpdatedQty, i.Notes,
+                      i.IsInStock, pa.PalletID, pa.AssignDate
+               FROM PALLET_Assignment pa
+               JOIN InventoryOld i ON pa.InventoryID = i.InventoryID
+               WHERE pa.PalletID = ?
+               ORDER BY i.Pn""",
+            (pallet_id,),
         ).fetchall()
 
 
