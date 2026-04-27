@@ -390,7 +390,9 @@ class InventoryScreen(QWidget):
         rows = self._rows
         n    = len(rows)
 
-        msg = f"נמצאו: {n} פריטים"
+        total_qty = sum(float(row["Qty"] or 0) for row in rows)
+        qty_str = str(int(total_qty)) if total_qty == int(total_qty) else f"{total_qty:g}"
+        msg = f"נמצאו: {n} פריטים  |  סה\"כ כמות: {qty_str}"
         if truncated:
             msg += f"  ← מוצגים {MAX_ROWS} הראשונים בלבד"
         self.lbl_count.setText(msg)
