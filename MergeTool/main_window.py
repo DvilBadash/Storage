@@ -174,7 +174,7 @@ class MainWindow(QMainWindow):
 
         g.addWidget(QLabel("נתיב יצוא תוצאות:"))
         r1 = QHBoxLayout()
-        self.txt_export = QLineEdit(db.get_setting("export_path", os.path.expanduser("~/Desktop")))
+        self.txt_export = QLineEdit(db.get_setting("export_path") or r"C:\Temp\Merge_XLS_WH")
         btn_e = QPushButton("עיון..."); btn_e.setObjectName("btn_secondary")
         btn_e.clicked.connect(lambda: self._browse(self.txt_export))
         r1.addWidget(btn_e); r1.addWidget(self.txt_export)
@@ -315,7 +315,7 @@ class MainWindow(QMainWindow):
 
             # Auto-export to output path
             archive_dir  = db.get_setting("archive_path")
-            export_dir   = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
+            export_dir   = db.get_setting("export_path") or r"C:\Temp\Merge_XLS_WH"
             unified_rows = db.get_unified_inventory()
             arc_path     = xh.archive_path(export_dir, "FinalOutput")
             xh.export_unified_xlsx(unified_rows, arc_path)
@@ -383,7 +383,7 @@ class MainWindow(QMainWindow):
         if not rows:
             QMessageBox.warning(self, "אזהרה", "אין נתונים לייצוא")
             return
-        export_dir = db.get_setting("export_path", os.path.expanduser("~/Desktop"))
+        export_dir = db.get_setting("export_path") or r"C:\Temp\Merge_XLS_WH"
         arc_path   = xh.archive_path(export_dir, "UnifiedInventory_Export")
         xh.export_unified_xlsx(rows, arc_path)
         db.log(self.username, "EXPORT_UNIFIED", f"{arc_path}")

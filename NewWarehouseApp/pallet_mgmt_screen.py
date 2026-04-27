@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QAbstractItemView, QMessageBox, QDialog,
     QFrame, QGroupBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont, QColor
 import database as db
 
@@ -59,7 +59,7 @@ class PalletManagementScreen(QWidget):
         super().__init__()
         self.username = username
         self._build_ui()
-        self._load_table()
+        QTimer.singleShot(0, self._load_table)
 
     def _build_ui(self):
         root = QVBoxLayout(self)

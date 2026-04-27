@@ -2,7 +2,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QComboBox, QFrame, QCheckBox, QMessageBox,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 import database as db
 
@@ -15,7 +15,7 @@ class PalletAssignmentScreen(QWidget):
         self._build_ui()
         self.detail_frame.hide()
         self.btn_assign.setEnabled(False)
-        self.refresh()
+        QTimer.singleShot(0, self.refresh)
 
     def _build_ui(self):
         root = QVBoxLayout(self)

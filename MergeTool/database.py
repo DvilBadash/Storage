@@ -198,12 +198,18 @@ def _migrate_pallet_id_to_text():
 def _seed_settings(c):
     defaults = [
         ("theme", "light"),
-        ("export_path", os.path.expanduser("~/Desktop")),
-        ("archive_path", os.path.join(os.path.dirname(DB_PATH), "archive")),
+        ("export_path",  r"C:\Temp\Merge_XLS_WH"),
+        ("archive_path", r"C:\Temp\Merge_XLS_WH\Archive"),
         ("last_merge_date", ""),
     ]
     for k, v in defaults:
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
+    _old_export  = os.path.expanduser("~/Desktop")
+    _old_archive = os.path.join(os.path.dirname(DB_PATH), "archive")
+    c.execute("UPDATE Settings SET SettingValue=? WHERE SettingKey='export_path'  AND SettingValue=?",
+              (r"C:\Temp\Merge_XLS_WH",          _old_export))
+    c.execute("UPDATE Settings SET SettingValue=? WHERE SettingKey='archive_path' AND SettingValue=?",
+              (r"C:\Temp\Merge_XLS_WH\Archive",   _old_archive))
 
 
 def get_setting(key: str, default: str = "") -> str:
