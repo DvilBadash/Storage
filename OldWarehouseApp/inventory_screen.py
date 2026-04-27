@@ -585,6 +585,30 @@ class InventoryScreen(QWidget):
         if pallet_id is None:
             QMessageBox.warning(self, "שגיאה", "יש לבחור מספר משטח לפני השיוך.")
             return
+
+        # Collect DestArea of selected items
+        selected_rows = [self._rows[r] for r in range(self.table.rowCount())
+                         if r < len(self._rows) and self._is_checked(r)]
+        new_areas = {str(r["DestArea"]).strip() for r in selected_rows if r.get("DestArea")}
+
+        # Collect DestArea of items already on this pallet
+        existing_areas = {str(it["DestArea"]).strip()
+                          for it in db.get_pallet_items(pallet_id) if it["DestArea"]}
+
+        all_areas = new_areas | existing_areas
+        if len(all_areas) > 1:
+            areas_list = "\n".join(f"• {a}" for a in sorted(all_areas))
+            reply = QMessageBox.question(
+                self, "⚠  אזהרה – אזורי יעד שונים",
+                f"על המשטח {pallet_id} יהיו פריטים עם אזורי יעד שונים:\n\n"
+                f"{areas_list}\n\n"
+                "האם להמשיך בשיוך?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         db.assign_items_to_pallet(inv_ids, pallet_id, self.username)
         self._search()
 
