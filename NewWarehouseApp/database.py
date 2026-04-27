@@ -92,28 +92,24 @@ def init_db():
         c.commit()
 
 
-# 11 item columns matching STOCK.xlsx field names
+# 7 item columns matching PalletItemsDialog display
 DEFAULT_ITEM_HEADERS = {
-    "item_col_0":  'מק"ט',
-    "item_col_1":  "חומר",
-    "item_col_2":  "יחידת מידה",
-    "item_col_3":  "סדרה",
-    "item_col_4":  "WBS",
-    "item_col_5":  "אתר אחסון",
-    "item_col_6":  "סוג איחסון",
-    "item_col_7":  "איתור איחסון",
-    "item_col_8":  "מלאי זמין",
-    "item_col_9":  "אסטרטגיה ייעודית",
-    "item_col_10": "האם > איתור אחד",
+    "item_col_0": 'מק"ט',
+    "item_col_1": "סדרה",
+    "item_col_2": "WBS",
+    "item_col_3": "אחסון",
+    "item_col_4": "סוג",
+    "item_col_5": "Bin",
+    "item_col_6": "כמות",
 }
 
+# 5 pallet management columns matching PalletManagementScreen display
 DEFAULT_PAL_HEADERS = {
     "pal_col_0": "מספר משטח",
-    "pal_col_1": "סטטוס",
-    "pal_col_2": "איתור יעד",
-    "pal_col_3": "תאריך שיוך",
-    "pal_col_4": "פריטים",
-    "pal_col_5": "עדכן סטטוס",
+    "pal_col_1": "איתור יעד",
+    "pal_col_2": "תאריך שיוך",
+    "pal_col_3": "פריטים",
+    "pal_col_4": "סטטוס",
 }
 
 
@@ -211,12 +207,12 @@ def _seed_settings(c):
 
 def get_item_headers() -> list[str]:
     return [get_setting(f"item_col_{i}", DEFAULT_ITEM_HEADERS.get(f"item_col_{i}", ""))
-            for i in range(11)]
+            for i in range(7)]
 
 
 def get_pal_headers() -> list[str]:
     return [get_setting(f"pal_col_{i}", DEFAULT_PAL_HEADERS.get(f"pal_col_{i}", ""))
-            for i in range(6)]
+            for i in range(5)]
 
 
 def set_col_header(key: str, label: str):

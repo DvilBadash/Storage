@@ -132,17 +132,20 @@ def _migrate_pallet_id_to_text():
         conn.close()
 
 
-# Columns 1-9 map to the 9 content columns (col 0 = checkbox, no header needed)
+# Columns 1-12 map to the 12 content columns (col 0 = checkbox, no header needed)
 DEFAULT_COL_HEADERS = {
-    "inv_col_1": "PN / מספר חלק",
-    "inv_col_2": "מס' קטלוגי",
-    "inv_col_3": "איתור",
-    "inv_col_4": "אתר איחסון",
-    "inv_col_5": "סוג איחסון",
-    "inv_col_6": "אזור יעד",
-    "inv_col_7": "ממוקם",
-    "inv_col_8": "משטח משויך",
-    "inv_col_9": "חיווי",
+    "inv_col_1":  "מס' קטלוגי",
+    "inv_col_2":  "PN",
+    "inv_col_3":  "סדרה",
+    "inv_col_4":  "WBS",
+    "inv_col_5":  "כמות",
+    "inv_col_6":  "איתור",
+    "inv_col_7":  "אזור יעד",
+    "inv_col_8":  "ממוקם",
+    "inv_col_9":  "משטח משויך",
+    "inv_col_10": "חיווי",
+    "inv_col_11": "כמות מעודכנת",
+    "inv_col_12": "הערות",
 }
 
 
@@ -165,14 +168,14 @@ def _seed_settings(c):
               (r"C:\Temp\Old_WH_Archive",  _old_archive))
     for k, v in DEFAULT_COL_HEADERS.items():
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (k, v))
-    for i in range(1, 10):
+    for i in range(1, 13):
         c.execute("INSERT OR IGNORE INTO Settings VALUES (?,?)", (f"inv_col_{i}_hidden", "0"))
 
 
 def get_column_headers() -> list[str]:
-    """Returns 10-element list: index 0 = '' (checkbox col), 1-9 = custom/default labels."""
+    """Returns 13-element list: index 0 = '' (checkbox col), 1-12 = custom/default labels."""
     result = [""]
-    for i in range(1, 10):
+    for i in range(1, 13):
         result.append(get_setting(f"inv_col_{i}", DEFAULT_COL_HEADERS.get(f"inv_col_{i}", "")))
     return result
 

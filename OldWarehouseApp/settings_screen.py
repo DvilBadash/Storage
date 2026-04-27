@@ -184,7 +184,7 @@ class SettingsScreen(QWidget):
         col_fields = {}   # col_index → QLineEdit
         col_checks = {}   # col_index → QCheckBox
 
-        for i in range(1, 10):
+        for i in range(1, 13):
             key     = f"inv_col_{i}"
             default = DEFAULT_COL_HEADERS.get(key, "")
             current = db.get_setting(key, default)

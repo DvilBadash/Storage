@@ -165,8 +165,8 @@ class SettingsScreen(QWidget):
 
         row_pos = 0
         for section, keys in [
-            ("טבלת פריטי משטח:", [f"item_col_{i}" for i in range(11)]),
-            ("טבלת ניהול משטחים:", [f"pal_col_{i}"  for i in range(6)]),
+            ("טבלת פריטי משטח:", [f"item_col_{i}" for i in range(7)]),
+            ("טבלת ניהול משטחים:", [f"pal_col_{i}"  for i in range(5)]),
         ]:
             sec_lbl = QLabel(section)
             sec_lbl.setStyleSheet("font-weight:bold; color:#1565C0;")
