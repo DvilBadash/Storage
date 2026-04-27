@@ -6,7 +6,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QRect, QTimer
 from PyQt6.QtGui import QFont, QColor, QBrush, QPainter, QPainterPath
-from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+from PyQt6.QtPrintSupport import QPrinter, QPrintPreviewDialog
+from PyQt6.QtGui import QDoubleValidator
 from collections import Counter
 import database as db
 
@@ -258,10 +259,11 @@ class InventoryScreen(QWidget):
         assign_lay.addStretch()
         assign_lay.addWidget(self.lbl_selected)
 
-        btn_print = QPushButton("🖨  הדפסה")
-        btn_print.setMinimumHeight(36)
-        btn_print.setFixedWidth(110)
+        btn_print = QPushButton("🖨   הדפסה")
+        btn_print.setMinimumHeight(42)
+        btn_print.setMinimumWidth(140)
         btn_print.setObjectName("btn_secondary")
+        btn_print.setFont(QFont("Segoe UI", 11))
         btn_print.clicked.connect(self._print_data)
         assign_lay.addWidget(btn_print)
 
@@ -638,6 +640,9 @@ class InventoryScreen(QWidget):
         txt.setMinimumHeight(38)
         txt.setPlaceholderText("הכנס כמות (ריק = נקה עדכון)")
         txt.selectAll()
+        validator = QDoubleValidator(0, 999999999, 4, txt)
+        validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+        txt.setValidator(validator)
         lay.addWidget(txt)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         btns.button(QDialogButtonBox.StandardButton.Save).setText("שמור")
@@ -792,14 +797,19 @@ class InventoryScreen(QWidget):
         html += "</table></body></html>"
 
         from PyQt6.QtGui import QTextDocument, QPageLayout
-        printer = QPrinter()
+        printer = QPrinter(QPrinter.PrinterMode.ScreenResolution)
         printer.setPageOrientation(QPageLayout.Orientation.Landscape)
-        pd = QPrintDialog(printer, self)
-        if pd.exec() != QPrintDialog.DialogCode.Accepted:
-            return
-        doc = QTextDocument()
-        doc.setHtml(html)
-        doc.print(printer)
+
+        def render(p):
+            doc = QTextDocument()
+            doc.setHtml(html)
+            doc.print(p)
+
+        preview = QPrintPreviewDialog(printer, self)
+        preview.setWindowTitle("תצוגה לפני הדפסה")
+        preview.paintRequested.connect(render)
+        preview.resize(1100, 700)
+        preview.exec()
 
     # ── Public refresh ────────────────────────────────────────────────────────
 
