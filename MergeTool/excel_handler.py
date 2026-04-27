@@ -42,11 +42,16 @@ STOCK_HEADER_MAP = {
     "IsInStock":    "IsInStock",
     "AssignDate":   "AssignDate",
     "TargetBin":    "TargetBin",
+    "UpdatedQty":   "UpdatedQty",
+    "Notes":        "Notes",
+    "כמות מעודכנת": "UpdatedQty",
+    "הערות":        "Notes",
 }
 
 STAGING_FIELDS = ["Cat", "Pn", "UnitOfMeasure", "Batch", "WBS", "Storage",
                   "Area", "Bin", "DestArea", "Qty", "MultiLocation",
-                  "PalletID", "IsInStock", "AssignDate", "TargetBin"]
+                  "PalletID", "IsInStock", "AssignDate", "TargetBin",
+                  "UpdatedQty", "Notes"]
 
 
 def _style_header(ws, headers):
@@ -93,6 +98,11 @@ def load_old_warehouse_xlsx(path: str) -> list[dict]:
             d["Qty"] = float(d["Qty"]) if d["Qty"] else 0.0
         except ValueError:
             d["Qty"] = 0.0
+        try:
+            d["UpdatedQty"] = float(d["UpdatedQty"]) if d.get("UpdatedQty") else None
+        except ValueError:
+            d["UpdatedQty"] = None
+        d["Notes"] = d.get("Notes", "").strip() or None
         d["PalletID"] = d["PalletID"].strip() or None
         d["IsInStock"] = 1 if str(d.get("IsInStock", "")).strip() in ("1", "כן", "true", "True") else 0
         result.append(d)
@@ -128,6 +138,9 @@ def load_new_warehouse_xlsx(path: str) -> list[dict]:
     return result
 
 
+UPD_QTY_FILL = PatternFill("solid", fgColor="F9A825")   # orange — updated qty cell
+
+
 def export_unified_xlsx(rows, path: str):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -137,21 +150,33 @@ def export_unified_xlsx(rows, path: str):
         "אתר אחסון", "סוג איחסון", "איתור איחסון", "אסטרטגיה ייעודית",
         "מלאי זמין", "האם > איתור אחד",
         "PalletID", "קיים פיזית", "TargetBin", "סטטוס", "AssignDate", "MergeDate",
+        "כמות מעודכנת", "הערות",
     ]
     db_keys = [
         "Cat", "Pn", "UnitOfMeasure", "Batch", "WBS",
         "Storage", "Area", "Bin", "DestArea",
         "Qty", "MultiLocation",
         "PalletID", "IsInStock", "TargetBin", "Status", "AssignDate", "MergeDate",
+        "UpdatedQty", "Notes",
     ]
     _style_header(ws, headers)
 
     STATUS_COLORS = {"ממוקם": "C8E6C9", "יצא": "BBDEFB", "הוקם": "FFF9C4"}
+    upd_qty_col_idx = db_keys.index("UpdatedQty") + 1
 
     for r_idx, row in enumerate(rows, 2):
-        status = row["Status"] or ""
-        fill_color = STATUS_COLORS.get(status)
-        fill = PatternFill("solid", fgColor=fill_color) if fill_color else (ALT_FILL if r_idx % 2 == 0 else None)
+        status = row["Status"] or "" if "Status" in row.keys() else ""
+        try:
+            upd_qty = row["UpdatedQty"]
+            orig_qty = row["Qty"]
+            has_update = upd_qty is not None and upd_qty != orig_qty
+        except (IndexError, KeyError):
+            has_update = False
+        if has_update:
+            fill = PatternFill("solid", fgColor="FFF9C4")
+        else:
+            fill_color = STATUS_COLORS.get(status)
+            fill = PatternFill("solid", fgColor=fill_color) if fill_color else (ALT_FILL if r_idx % 2 == 0 else None)
         for c_idx, key in enumerate(db_keys, 1):
             try:
                 val = row[key]
@@ -161,7 +186,10 @@ def export_unified_xlsx(rows, path: str):
                 val = "כן" if val else "לא"
             cell = ws.cell(row=r_idx, column=c_idx, value=val)
             cell.border = THIN_BORDER
-            if fill:
+            if has_update and c_idx == upd_qty_col_idx:
+                cell.fill = UPD_QTY_FILL
+                cell.font = Font(bold=True)
+            elif fill:
                 cell.fill = fill
     _auto_width(ws)
     wb.save(path)

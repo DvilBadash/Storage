@@ -101,8 +101,12 @@ def init_db():
         for tbl, col, defn in [
             ("StagingInventory", "UnitOfMeasure", "TEXT DEFAULT ''"),
             ("StagingInventory", "MultiLocation",  "TEXT DEFAULT ''"),
+            ("StagingInventory", "UpdatedQty",    "REAL"),
+            ("StagingInventory", "Notes",          "TEXT"),
             ("UnifiedInventory", "UnitOfMeasure", "TEXT DEFAULT ''"),
             ("UnifiedInventory", "MultiLocation",  "TEXT DEFAULT ''"),
+            ("UnifiedInventory", "UpdatedQty",    "REAL"),
+            ("UnifiedInventory", "Notes",          "TEXT"),
         ]:
             try:
                 c.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {defn}")
@@ -291,8 +295,9 @@ def bulk_insert_staging_old(rows: list[dict]):
             c.execute(
                 """INSERT INTO StagingInventory
                    (Cat,Pn,UnitOfMeasure,Batch,WBS,Storage,Area,Bin,DestArea,
-                    Qty,MultiLocation,PalletID,IsInStock,AssignDate,TargetBin)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    Qty,MultiLocation,PalletID,IsInStock,AssignDate,TargetBin,
+                    UpdatedQty,Notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     r.get("Cat", ""),
                     r.get("Pn",  r.get("PN", "")),
@@ -309,6 +314,8 @@ def bulk_insert_staging_old(rows: list[dict]):
                     r.get("IsInStock", 0),
                     r.get("AssignDate"),
                     r.get("TargetBin"),
+                    r.get("UpdatedQty") or None,
+                    r.get("Notes") or None,
                 ),
             )
         c.commit()
@@ -384,8 +391,9 @@ def run_merge(user: str) -> int:
             c.execute(
                 """INSERT INTO UnifiedInventory
                    (Cat,Pn,UnitOfMeasure,Batch,WBS,Storage,Area,Bin,DestArea,Qty,
-                    MultiLocation,PalletID,IsInStock,TargetBin,Status,AssignDate,MergeDate)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    MultiLocation,PalletID,IsInStock,TargetBin,Status,AssignDate,MergeDate,
+                    UpdatedQty,Notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     row["Cat"], row["Pn"],
                     row["UnitOfMeasure"] if "UnitOfMeasure" in row.keys() else "",
@@ -394,6 +402,8 @@ def run_merge(user: str) -> int:
                     row["MultiLocation"] if "MultiLocation" in row.keys() else "",
                     pallet_id or None,
                     row["IsInStock"], target_bin, status, assign_date, now,
+                    row["UpdatedQty"] if "UpdatedQty" in row.keys() else None,
+                    row["Notes"] if "Notes" in row.keys() else None,
                 ),
             )
             count += 1
