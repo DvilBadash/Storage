@@ -294,7 +294,7 @@ class InventoryScreen(QWidget):
         prev = self.cmb_bin.currentText()
         self.cmb_bin.blockSignals(True)
         self.cmb_bin.clear()
-        self.cmb_bin.addItem("-- בחר --")
+        self.cmb_bin.addItem("")
         for v in db.get_distinct_values("Bin"):
             self.cmb_bin.addItem(v)
         idx = self.cmb_bin.findText(prev)
@@ -304,7 +304,7 @@ class InventoryScreen(QWidget):
         prev_p = self.cmb_filter_pallet.currentText()
         self.cmb_filter_pallet.blockSignals(True)
         self.cmb_filter_pallet.clear()
-        self.cmb_filter_pallet.addItem("-- בחר --", None)
+        self.cmb_filter_pallet.addItem("", None)
         for p in db.get_pallets():
             self.cmb_filter_pallet.addItem(str(p["PalletID"]), p["PalletID"])
         idx_p = self.cmb_filter_pallet.findText(prev_p)
@@ -313,11 +313,11 @@ class InventoryScreen(QWidget):
 
     def _refresh_pallet_combo(self):
         pallets = db.get_pallets()
-        labels  = ["–"] + [str(p["PalletID"]) for p in pallets]
+        labels  = [""] + [str(p["PalletID"]) for p in pallets]
         prev    = self.cmb_pallet.currentText()
         self.cmb_pallet.blockSignals(True)
         self.cmb_pallet.clear()
-        self.cmb_pallet.addItem("–", None)
+        self.cmb_pallet.addItem("", None)
         for p in pallets:
             self.cmb_pallet.addItem(str(p["PalletID"]), p["PalletID"])
         completer = QCompleter(labels, self.cmb_pallet)
@@ -337,7 +337,7 @@ class InventoryScreen(QWidget):
         prev = self.cmb_filter_pallet.currentData()
         self.cmb_filter_pallet.blockSignals(True)
         self.cmb_filter_pallet.clear()
-        self.cmb_filter_pallet.addItem("-- בחר --", None)
+        self.cmb_filter_pallet.addItem("", None)
         for p in pallets:
             self.cmb_filter_pallet.addItem(str(p["PalletID"]), p["PalletID"])
         idx = self.cmb_filter_pallet.findData(prev)

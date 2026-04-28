@@ -76,7 +76,7 @@ class PalletManagementScreen(QWidget):
         _f = QFont("Segoe UI"); _f.setPixelSize(16); lbl.setFont(_f)
         self.cmb_status = QComboBox()
         self.cmb_status.setMinimumHeight(38)
-        self.cmb_status.addItem("הכל", "")
+        self.cmb_status.addItem("", "")
         self.cmb_status.addItem("הוקם",  "הוקם")
         self.cmb_status.addItem("ממוקם", "ממוקם")
         self.cmb_status.addItem("יצא",   "יצא")

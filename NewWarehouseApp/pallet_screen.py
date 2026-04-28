@@ -158,7 +158,7 @@ class PalletAssignmentScreen(QWidget):
     def _reload_pallets(self):
         self.cmb_pallet.blockSignals(True)
         self.cmb_pallet.clear()
-        self.cmb_pallet.addItem("-- בחר משטח --", None)
+        self.cmb_pallet.addItem("", None)
         for p in db.get_pallets():
             icon = {"ממוקם": "✔", "יצא": "→", "הוקם": "●"}.get(p["Status"], "")
             self.cmb_pallet.addItem(f"{icon}  {p['PalletID']}", p["PalletID"])
@@ -166,7 +166,7 @@ class PalletAssignmentScreen(QWidget):
 
     def _reload_locations(self):
         self.cmb_dest.clear()
-        self.cmb_dest.addItem("-- בחר איתור יעד --", None)
+        self.cmb_dest.addItem("", None)
         for loc in db.get_all_dest_bins():
             self.cmb_dest.addItem(loc["Dest_BIN"], loc["Dest_BIN"])
 
