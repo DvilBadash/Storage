@@ -1,8 +1,11 @@
 import sqlite3
 import os
+import sys
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "merge_tool.db")
+_APP_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) \
+           else os.path.dirname(os.path.abspath(__file__))
+DB_PATH  = os.path.join(_APP_DIR, "merge_tool.db")
 APP_NAME = "MergeTool"
 
 
