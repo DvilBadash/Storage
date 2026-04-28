@@ -142,11 +142,10 @@ class InventoryScreen(QWidget):
 
         self.txt_pn = QLineEdit()
         self.txt_pn.setMinimumHeight(36)
-        self.txt_pn.returnPressed.connect(self._search)
+        self.txt_pn.textChanged.connect(self._search)
 
         self.txt_cat = QLineEdit()
         self.txt_cat.setMinimumHeight(36)
-        self.txt_cat.returnPressed.connect(self._search)
         self.txt_cat.textChanged.connect(self._search)
 
         self.cmb_bin = QComboBox(); self.cmb_bin.setMinimumHeight(36)
@@ -173,12 +172,6 @@ class InventoryScreen(QWidget):
         filter_row.addWidget(_filter_card("🏷  PN",          self.txt_cat))
         filter_row.addWidget(_filter_card("📍  איתור",       self.cmb_bin))
         filter_row.addWidget(_filter_card("📦  משטח",        self.cmb_filter_pallet))
-
-        btn_search = QPushButton("חפש")
-        btn_search.setMinimumHeight(36)
-        btn_search.setFixedWidth(70)
-        btn_search.clicked.connect(self._search)
-        filter_row.addWidget(btn_search)
 
         btn_clear = QPushButton("נקה")
         btn_clear.setObjectName("btn_secondary")
