@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QFrame, QCheckBox, QMessageBox,
+    QComboBox, QCompleter, QFrame, QCheckBox, QMessageBox,
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
@@ -40,6 +40,13 @@ class PalletAssignmentScreen(QWidget):
         _f = QFont("Segoe UI"); _f.setPixelSize(16); _f.setBold(True); lbl_loc.setFont(_f)
         self.cmb_dest = QComboBox()
         self.cmb_dest.setMinimumHeight(44)
+        self.cmb_dest.setEditable(True)
+        self.cmb_dest.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        _cd = QCompleter(self.cmb_dest.model(), self.cmb_dest)
+        _cd.setFilterMode(Qt.MatchFlag.MatchContains)
+        _cd.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        _cd.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.cmb_dest.setCompleter(_cd)
         loc_lay.addWidget(lbl_loc)
         loc_lay.addWidget(self.cmb_dest)
 
@@ -54,6 +61,11 @@ class PalletAssignmentScreen(QWidget):
         self.cmb_pallet.setMinimumHeight(44)
         self.cmb_pallet.setEditable(True)
         self.cmb_pallet.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        _cp = QCompleter(self.cmb_pallet.model(), self.cmb_pallet)
+        _cp.setFilterMode(Qt.MatchFlag.MatchContains)
+        _cp.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        _cp.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.cmb_pallet.setCompleter(_cp)
         self.cmb_pallet.currentIndexChanged.connect(self._on_pallet_changed)
         pal_lay.addWidget(lbl_pal)
         pal_lay.addWidget(self.cmb_pallet)

@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QCheckBox, QTableWidget, QTableWidgetItem,
+    QComboBox, QCompleter, QCheckBox, QTableWidget, QTableWidgetItem,
     QHeaderView, QAbstractItemView, QMessageBox, QDialog,
     QFrame, QGroupBox,
 )
@@ -80,6 +80,13 @@ class PalletManagementScreen(QWidget):
         self.cmb_status.addItem("הוקם",  "הוקם")
         self.cmb_status.addItem("ממוקם", "ממוקם")
         self.cmb_status.addItem("יצא",   "יצא")
+        self.cmb_status.setEditable(True)
+        self.cmb_status.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        _cs = QCompleter(self.cmb_status.model(), self.cmb_status)
+        _cs.setFilterMode(Qt.MatchFlag.MatchContains)
+        _cs.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        _cs.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.cmb_status.setCompleter(_cs)
         self.cmb_status.currentIndexChanged.connect(self._load_table)
         self.chk_unassigned = QCheckBox("ללא שיוך")
         self.chk_unassigned.toggled.connect(self._load_table)
