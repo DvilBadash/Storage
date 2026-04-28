@@ -141,12 +141,10 @@ class InventoryScreen(QWidget):
             return card
 
         self.txt_pn = QLineEdit()
-        self.txt_pn.setPlaceholderText("PN")
         self.txt_pn.setMinimumHeight(36)
         self.txt_pn.returnPressed.connect(self._search)
 
         self.txt_cat = QLineEdit()
-        self.txt_cat.setPlaceholderText("מס' קטלוגי")
         self.txt_cat.setMinimumHeight(36)
         self.txt_cat.returnPressed.connect(self._search)
         self.txt_cat.textChanged.connect(self._search)
